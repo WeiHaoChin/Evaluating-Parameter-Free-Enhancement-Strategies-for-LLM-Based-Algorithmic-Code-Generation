@@ -72,7 +72,7 @@ for step in range(5):
     print(f"Prompt: {prompt.value} System Prompt: {loss_system_prompt.value}\n")
     answer = model(loss_system_prompt+prompt)
     print("===Model Output ===")
-    printf(answer.value)
+    print(answer.value)
     loss_fn = tg.TextLoss(
             "Evaluate this answer. It should be factual, clear, and directly answer the question."
         )
