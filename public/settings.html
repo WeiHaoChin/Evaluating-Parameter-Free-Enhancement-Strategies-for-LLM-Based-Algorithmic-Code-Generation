@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings - FYP Chat UI</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-icon">F</div>
+          <div>
+            <div class="brand-title">FYP Chat</div>
+            <div class="brand-subtitle">Settings</div>
+          </div>
+        </div>
+        <button id="backToChat" class="new-chat-btn">← Back to chat</button>
+        <nav class="sidebar-menu">
+          <a class="sidebar-item" href="index.html">Chat</a>
+          <a class="sidebar-item" href="new-chat.html">New chat</a>
+          <a class="sidebar-item active" href="settings.html">Settings</a>
+        </nav>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div>
+            <h1>Settings</h1>
+            <p>Configure your AI model, benchmark, temperature, and evaluation options.</p>
+          </div>
+        </header>
+
+        <div class="settings-page">
+          <div class="settings-section">
+            <label for="modelSelect">AI model</label>
+            <select id="modelSelect">
+              <option value="gemma3:4b">gemma3:4b</option>
+              <option value="gpt-oss:120b-cloud">gpt-oss:120b-cloud</option>
+              <option value="mock-chat:1.0">mock-chat:1.0</option>
+            </select>
+          </div>
+
+          <div class="settings-section" id="apiKeySection" style="display: none;">
+            <label for="apiKey">API key</label>
+            <input type="password" id="apiKey" placeholder="Enter API key for selected model" />
+            <p class="field-note">Required when using remote models like gemma3 or gpt-oss.</p>
+          </div>
+
+          <div class="settings-section">
+            <label for="benchmarkSelect">Benchmark model</label>
+            <select id="benchmarkSelect">
+              <option value="TruthfulQA">TruthfulQA</option>
+              <option value="ARC">ARC</option>
+              <option value="HellaSwag">HellaSwag</option>
+              <option value="MMLU">MMLU</option>
+            </select>
+          </div>
+
+          <div class="settings-section">
+            <label for="temperature">Temperature</label>
+            <div class="range-row">
+              <input type="range" id="temperature" min="0" max="1" step="0.01" />
+              <span id="temperatureValue">0.70</span>
+            </div>
+          </div>
+
+          <div class="settings-section switch-row">
+            <div>
+              <span>Include RAG in evaluation</span>
+              <small>Enable retrieval-augmented generation during evaluation.</small>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="includeRag" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-section switch-row">
+            <div>
+              <span>Include TextGrad in evaluation</span>
+              <small>Enable TextGrad-based evaluation scoring.</small>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="includeTextGrad" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="settings-section" id="textGradModelSection" style="display: none;">
+            <label for="textGradModelSelect">TextGrad model</label>
+            <select id="textGradModelSelect">
+              <option value="gemma3:4b">gemma3:4b</option>
+              <option value="gpt-oss:120b-cloud">gpt-oss:120b-cloud</option>
+              <option value="mock-chat:1.0">mock-chat:1.0</option>
+            </select>
+            <p class="field-note">Choose the model used for TextGrad evaluation.</p>
+          </div>
+
+          <div class="settings-section" id="textGradApiKeySection" style="display: none;">
+            <label for="textGradApiKey">TextGrad API key</label>
+            <input type="password" id="textGradApiKey" placeholder="Enter API key for TextGrad model" />
+            <p class="field-note">Required when using remote models for TextGrad.</p>
+          </div>
+
+          <div class="settings-section" id="textGradLoopsSection" style="display: none;">
+            <label for="textGradLoops">TextGrad loop count</label>
+            <input type="number" id="textGradLoops" min="1" max="50" step="1" value="1" />
+            <p class="field-note">How many optimization loops TextGrad should run.</p>
+          </div>
+
+          <div class="settings-section" id="textGradSystemPromptSection" style="display: none;">
+            <label for="systemPrompt">System prompt for TextGrad</label>
+            <textarea id="systemPrompt" rows="4">The explanation must be clear and beginner-friendly.</textarea>
+            <p class="field-note">Used as the system prompt when TextGrad evaluation is enabled.</p>
+          </div>
+
+          <div class="settings-section" id="textGradLossPromptSection" style="display: none;">
+            <label for="textGradLossPrompt">TextGrad loss prompt</label>
+            <textarea id="textGradLossPrompt" rows="3">Evaluate this answer. It should be factual, clear, and directly answer the question.</textarea>
+            <p class="field-note">The evaluation criteria used by TextGrad to optimize the prompt.</p>
+          </div>
+
+          <div class="settings-section switch-row">
+            <div>
+              <span>Dark theme</span>
+              <small>Match the chat UI theme.</small>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="darkThemeToggle" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <button id="saveSettingsBtn" class="primary-button">Save settings</button>
+          <p id="saveStatus" class="save-status"></p>
+        </div>
+      </main>
+    </div>
+
+    <script src="settings.js"></script>
+  </body>
+</html>

@@ -1,3 +1,4 @@
-secret.txt
+.env
 secret test.txt
 logs/*.jsonl
+__pycache__

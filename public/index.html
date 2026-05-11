@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FYP Chat UI</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-icon">F</div>
+          <div>
+            <div class="brand-title">LLM Evaluation</div>
+            <div class="brand-subtitle">Demo UI</div>
+          </div>
+        </div>
+        <button id="newChatBtn" class="new-chat-btn">+ New chat</button>
+        <nav class="sidebar-menu">
+          <a class="sidebar-item active" href="#">Home</a>
+          <a class="sidebar-item" href="#">Examples</a>
+          <a class="sidebar-item" href="#">Shortcuts</a>
+        </nav>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div>
+            <h1>LLM Evaluation</h1>
+            <p>Use the settings menu to customize prompt and model behavior.</p>
+          </div>
+          <div id="backendStatus" class="backend-status">Backend: checking...</div>
+        </header>
+        <button id="settingsButton" class="settings-fab" title="Open settings">Settings</button>
+
+        <section class="chat-window" id="chatWindow"></section>
+
+        <form id="chatForm" class="composer">
+          <textarea id="messageInput" placeholder="Send a message..." rows="1"></textarea>
+          <button type="submit" class="send-button">Send</button>
+        </form>
+      </main>
+
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

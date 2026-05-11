@@ -1,94 +1,64 @@
-# textgrad_gemini.py
-
-
-import requests,ollama
-from textgrad import Variable, TGD
+import os
+import ollama
 import textgrad as tg
+from textgrad import Variable, TGD
+from dotenv import load_dotenv
+
+load_dotenv()
+API_KEY = os.getenv('OLLAMA_API_KEY')
 
 class OllamaLLM:
-    def __init__(self, model="gemma3:4b", host="http://localhost:11434",api_key=None):
+    def __init__(self, model='gemma3:4b', host='http://localhost:11434', api_key=None):
         self.model = model
         self.api_key = api_key
-        if(api_key==None):
-            self.url = f"{host}/api/generate"
-        else:
-            self.url=f"https://ollama.com/api/generate"
+        self.host = host
 
     def __call__(self, prompt, system_prompt=None, **kwargs):
-        """Generates LLM output via Ollama"""
         messages = []
         if system_prompt:
             messages.append({'role': 'system', 'content': str(system_prompt)})
         messages.append({'role': 'user', 'content': str(prompt)})
-        
+
         response = ollama.chat(model=self.model, messages=messages)
         return response['message']['content']
 
 
-# -----------------------------
-# 2️⃣ Initialize LLM & prompt
-# -----------------------------
-with open("secret.txt", "r", encoding="utf-8") as file:
-    API_KEY = file.read()  # my_text now contains all the text from the file
-#llm = GeminiLLM(API_KEY, model="gemini-2.5-flash")
-
-llm = OllamaLLM()  # Using Ollama for testing without API calls
-llm1= OllamaLLM(model="gpt-oss:120b-cloud",api_key=API_KEY)
-# 1️⃣ Set the engine used for gradient feedback
-tg.set_backward_engine(llm1, override=True)
-# 3️⃣ Create the model (forward LLM)
-model = tg.BlackboxLLM(llm)
-
-#loss_fn = GeminiLoss("Make the explanation clear and beginner-friendly.", llm)
-#loss_fn = OllamaLoss("Make the explanation clear and beginner-friendly.", llm)
-loss_system_prompt = tg.Variable("""The explanation must be clear and beginner-friendly.""",
-                                 requires_grad=True,
-                                 role_description="system prompt")
-prompt = tg.Variable(
-    "Teach me about the quantum computing",
-    requires_grad=True,
-    role_description="Prompt for LLM"
-)
-#answer.set_role_description("LLM output for the given prompt")
-optimizer = tg.TGD(parameters=[prompt])
-# define the loss function (llm critique)
-#loss_fn = tg.TextLoss(loss_system_prompt)
-# 1️⃣ Ollama wrapper
+def create_textgrad_model(model='gemma3:4b', api_key=None):
+    llm = OllamaLLM(model=model, api_key=api_key)
+    feedback_llm = OllamaLLM(model='gpt-oss:120b-cloud', api_key=api_key)
+    tg.set_backward_engine(feedback_llm, override=True)
+    return tg.BlackboxLLM(llm)
 
 
+def run_textgrad(prompt_text, system_prompt, loops=1, model='gemma3:4b', api_key=None, loss_prompt="Evaluate this answer. It should be factual, clear, and directly answer the question."):
+    if loops < 1:
+        loops = 1
+
+    textgrad_model = create_textgrad_model(model=model, api_key=api_key)
+    prompt = Variable(prompt_text, requires_grad=True, role_description='Prompt for LLM')
+    system_prompt_var = Variable(system_prompt, requires_grad=True, role_description='system prompt')
+    optimizer = TGD(parameters=[prompt])
+
+    answer_text = ''
+    for _ in range(loops):
+        answer = textgrad_model(system_prompt_var + prompt)
+        answer_text = answer.value
+        loss_fn = tg.TextLoss(loss_prompt)
+        loss = loss_fn(answer)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+    return answer_text
 
 
-# -----------------------------
-# 4️⃣ Optimizer
-# -----------------------------
-#optimizer = TGD([prompt],engine=llm)
-
-# -----------------------------
-# 5️⃣ Optimization loop
-# -----------------------------
-for step in range(5):
-    #output = llm(prompt.value)
-    print("=== Starting Prompt ===")
-    print(f"Prompt: {prompt.value} System Prompt: {loss_system_prompt.value}\n")
-    answer = model(loss_system_prompt+prompt)
-    print("===Model Output ===")
-    print(answer.value)
-    loss_fn = tg.TextLoss(
-            "Evaluate this answer. It should be factual, clear, and directly answer the question."
-        )
-    loss = loss_fn(answer)
-    print("=== Critique Output ===")
-    print(loss.value)  # This will print the critique or output from the loss function
-    loss.backward()
-    optimizer.step()
-    optimizer.zero_grad()
-    #time.sleep(5)  # Sleep to respect API rate limits
-    print("=== Updated Prompt ===")
-    print(f"Step {step+1} - Updated prompt: {prompt.value}\n")
-
-# -----------------------------
-# 6️⃣ Final Output
-# -----------------------------
-print("===Final Output ===")
-answer = model(loss_system_prompt+prompt)
-print(answer.value)
+if __name__ == '__main__':
+    result = run_textgrad(
+        prompt_text='Teach me about quantum computing',
+        system_prompt='The explanation must be clear and beginner-friendly.',
+        loops=1,
+        model='gemma3:4b',
+        api_key=API_KEY,
+        loss_prompt='Evaluate this answer. It should be factual, clear, and directly answer the question.'
+    )
+    print(result)
