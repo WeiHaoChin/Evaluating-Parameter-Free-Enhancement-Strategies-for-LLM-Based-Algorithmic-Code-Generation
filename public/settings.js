@@ -37,7 +37,7 @@ const defaultSettings = {
 };
 
 function loadSettings() {
-  const stored = localStorage.getItem('fyp_chat_settings');
+  const stored = sessionStorage.getItem('fyp_chat_settings');
   if (!stored) return defaultSettings;
   try {
     return { ...defaultSettings, ...JSON.parse(stored) };
@@ -47,7 +47,7 @@ function loadSettings() {
 }
 
 function saveSettings(settings) {
-  localStorage.setItem('fyp_chat_settings', JSON.stringify(settings));
+  sessionStorage.setItem('fyp_chat_settings', JSON.stringify(settings));
 }
 
 function updateSliderValue() {
