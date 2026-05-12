@@ -35,35 +35,100 @@ function loadSavedSettings() {
   }
 }
 
-function loadSavedMessages() {
-  const stored = localStorage.getItem('fyp_chat_messages');
+function loadCurrentChat() {
+  const stored = localStorage.getItem('fyp_current_chat');
   if (!stored) return [];
   try {
     return JSON.parse(stored);
   } catch (error) {
-    console.error('Failed to parse saved messages', error);
+    console.error('Failed to parse current chat', error);
     return [];
   }
 }
 
-function saveMessages(messages) {
+function saveCurrentChat(messages) {
   try {
-    localStorage.setItem('fyp_chat_messages', JSON.stringify(messages));
+    localStorage.setItem('fyp_current_chat', JSON.stringify(messages));
   } catch (error) {
-    console.error('Failed to save messages', error);
+    console.error('Failed to save current chat', error);
   }
 }
 
+function loadSavedConversations() {
+  const stored = localStorage.getItem('fyp_saved_conversations');
+  if (!stored) return [];
+  try {
+    return JSON.parse(stored);
+  } catch (error) {
+    console.error('Failed to parse saved conversations', error);
+    return [];
+  }
+}
+
+function saveSavedConversations(conversations) {
+  try {
+    localStorage.setItem('fyp_saved_conversations', JSON.stringify(conversations));
+  } catch (error) {
+    console.error('Failed to save conversations', error);
+  }
+}
+
+function saveConversation(messages, settings) {
+  const conversations = loadSavedConversations();
+  
+  // Filter out the welcome message - but keep all user and assistant messages
+  const welcomeText = 'Welcome! This demo UI is styled like ChatGPT. Open the settings page to customize model, benchmark, or evaluation settings.';
+  const filteredMessages = messages.filter(m => {
+    // Keep all messages except the welcome message from assistant
+    if (m.role === 'assistant' && m.text === welcomeText) {
+      return false;
+    }
+    return true;
+  });
+  
+  if (filteredMessages.length === 0) {
+    return; // Don't save if only welcome message
+  }
+  
+  // Get title from first user message
+  const firstUserMessage = filteredMessages.find(m => m.role === 'user');
+  const title = firstUserMessage?.text?.substring(0, 50) || 'Untitled Conversation';
+  
+  const conversation = {
+    id: Date.now(),
+    timestamp: new Date().toISOString(),
+    title: title,
+    messages: filteredMessages,
+    settings: settings
+  };
+  conversations.unshift(conversation);
+  saveSavedConversations(conversations);
+  return conversation;
+}
+
 const state = {
-  messages: loadSavedMessages().length > 0 ? loadSavedMessages() : [
-    {
-      role: 'assistant',
-      text: 'Welcome! This demo UI is styled like ChatGPT. Open the settings page to customize model, benchmark, or evaluation settings.',
-    },
-  ],
+  messages: (() => {
+    const loaded = loadCurrentChat();
+    // Only use loaded chat if it was explicitly loaded from Examples
+    const wasLoadedFromExamples = sessionStorage.getItem('fyp_loaded_from_examples') === 'true';
+    if (loaded.length > 0 && wasLoadedFromExamples) {
+      sessionStorage.removeItem('fyp_loaded_from_examples');
+      return loaded;
+    }
+    // Otherwise start fresh
+    return [
+      {
+        role: 'assistant',
+        text: 'Welcome! This demo UI is styled like ChatGPT. Open the settings page to customize model, benchmark, or evaluation settings.',
+      },
+    ];
+  })(),
   settings: loadSavedSettings(),
   currentAssistantMessage: null,
   currentTextGradDetails: null,
+  currentPrompt: null,
+  conversationStart: null,
+  collectedEvents: [], // Store all streaming events for the response
 };
 
 function formatMessage(text) {
@@ -79,16 +144,30 @@ function renderMessages() {
   state.messages.forEach((message) => {
     const row = document.createElement('div');
     row.className = `message ${message.role}`;
-    const formattedText = formatMessage(message.text);
-    row.innerHTML = `<strong>${message.role === 'assistant' ? 'Assistant' : 'You'}</strong><div>${formattedText}</div>`;
+    
+    if (message.role === 'assistant' && message.html) {
+      // If we have saved HTML (from previous response), render it with full structure
+      row.innerHTML = `<strong>Assistant</strong><div class="message-content">${message.html}</div>`;
+    } else if (message.role === 'assistant') {
+      // Fallback: render as plain text
+      const formattedText = formatMessage(message.text || '');
+      row.innerHTML = `<strong>Assistant</strong><div class="message-content">${formattedText}</div>`;
+    } else {
+      // User messages
+      const formattedText = formatMessage(message.text || '');
+      row.innerHTML = `<strong>You</strong><div>${formattedText}</div>`;
+    }
     chatWindow.appendChild(row);
   });
+  
+  // Reattach event listeners to iteration toggles after rendering
+  reattachIterationToggleListeners();
   chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
 function addMessage(role, text) {
   state.messages.push({ role, text });
-  saveMessages(state.messages);
+  saveCurrentChat(state.messages);
   renderMessages();
 }
 
@@ -169,6 +248,9 @@ function sendMessageWebSocket(message) {
 
 function handleStreamingEvent(event) {
   const { type, data, loop, answer, original_prompt, updated, original } = event;
+  
+  // Collect all events
+  state.collectedEvents.push(event);
   
   switch (type) {
     case 'start':
@@ -354,9 +436,31 @@ function completeMessage(answer) {
     }
   });
   
-  state.currentAssistantMessage = null;
-  saveMessages(state.messages);
-  chatWindow.scrollTop = chatWindow.scrollHeight;
+  // Wait for DOM to be fully updated before capturing HTML
+  setTimeout(() => {
+    // Capture the entire rendered response as HTML
+    const fullResponseHTML = contentDiv.innerHTML;
+    
+    // Add the complete assistant message to state.messages
+    state.messages.push({
+      role: 'assistant',
+      text: answer, // Save the final answer text
+      html: fullResponseHTML, // Save the full HTML rendering
+      events: state.collectedEvents // Save all streaming events
+    });
+    
+    // Save immediately to localStorage
+    saveCurrentChat(state.messages);
+    
+    // Save the conversation to savedConversations when complete
+    if (state.messages.length > 1) {
+      saveConversation(state.messages, state.settings);
+    }
+    
+    state.currentAssistantMessage = null;
+    state.collectedEvents = []; // Reset collected events for next response
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+  }, 100); // Small delay to ensure DOM is fully updated
 }
 
 function handleError(errorMsg) {
@@ -389,15 +493,17 @@ function reattachIterationToggleListeners() {
   toggleButtons.forEach(button => {
     // Remove old listeners by cloning and replacing
     const newButton = button.cloneNode(true);
-    const container = newButton.closest('.iteration-container');
+    const container = button.closest('.iteration-container');
     
-    newButton.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      container.classList.toggle('expanded');
-    });
-    
-    button.replaceWith(newButton);
+    if (container) {
+      newButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        container.classList.toggle('expanded');
+      });
+      
+      button.replaceWith(newButton);
+    }
   });
 }
 
@@ -453,7 +559,17 @@ if (settingsButton) {
 
 if (newChatBtn) {
   newChatBtn.addEventListener('click', () => {
-    window.location.href = 'new-chat.html';
+    // Clear current chat and start new one
+    sessionStorage.removeItem('fyp_loaded_from_examples'); // Clear the load flag
+    localStorage.removeItem('fyp_current_chat'); // Clear current chat
+    state.messages = [
+      {
+        role: 'assistant',
+        text: 'Welcome! This demo UI is styled like ChatGPT. Open the settings page to customize model, benchmark, or evaluation settings.',
+      },
+    ];
+    saveCurrentChat(state.messages);
+    renderMessages();
   });
 }
 
@@ -462,15 +578,6 @@ updateTheme(state.settings.darkTheme);
 checkBackendStatus();
 if (backendStatus) {
   setInterval(checkBackendStatus, 5000);
-}
-
-// Restore chat window HTML if it was saved before navigation
-const savedChatHtml = localStorage.getItem('fyp_chat_html');
-if (savedChatHtml) {
-  chatWindow.innerHTML = savedChatHtml;
-  localStorage.removeItem('fyp_chat_html'); // Clear it after restoring
-  // Re-attach event listeners to iteration toggle buttons
-  reattachIterationToggleListeners();
 }
 
 // Initialize WebSocket on load

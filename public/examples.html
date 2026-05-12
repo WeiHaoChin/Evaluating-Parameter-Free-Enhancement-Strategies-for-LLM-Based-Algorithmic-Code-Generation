@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Examples - FYP Chat UI</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .examples-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+        gap: 20px;
+        padding: 20px;
+      }
+
+      .conversation-card {
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 16px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .conversation-card:hover {
+        border-color: rgba(16, 163, 127, 0.5);
+        background: rgba(16, 163, 127, 0.1);
+        transform: translateY(-2px);
+      }
+
+      .conversation-title {
+        font-weight: 600;
+        font-size: 16px;
+        margin-bottom: 8px;
+        color: #10a37f;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .conversation-timestamp {
+        font-size: 12px;
+        color: rgba(229, 231, 235, 0.6);
+        margin-bottom: 8px;
+      }
+
+      .conversation-settings {
+        font-size: 12px;
+        color: rgba(229, 231, 235, 0.5);
+        margin-bottom: 12px;
+        padding: 8px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 6px;
+      }
+
+      .conversation-preview {
+        font-size: 13px;
+        color: rgba(229, 231, 235, 0.8);
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        margin-bottom: 12px;
+      }
+
+      .conversation-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+
+      .btn {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.2s ease;
+      }
+
+      .btn-load {
+        background: #10a37f;
+        color: white;
+        flex: 1;
+      }
+
+      .btn-load:hover {
+        background: #0d8169;
+      }
+
+      .btn-delete {
+        background: rgba(255, 76, 76, 0.2);
+        color: #ff4c4c;
+        border: 1px solid rgba(255, 76, 76, 0.3);
+      }
+
+      .btn-delete:hover {
+        background: rgba(255, 76, 76, 0.3);
+        border-color: rgba(255, 76, 76, 0.5);
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: rgba(229, 231, 235, 0.5);
+      }
+
+      .empty-state-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+      }
+
+      .empty-state-text {
+        font-size: 16px;
+        margin-bottom: 24px;
+      }
+
+      .empty-state-link {
+        color: #10a37f;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .empty-state-link:hover {
+        text-decoration: underline;
+      }
+
+      .topbar {
+        padding: 20px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .topbar h1 {
+        margin: 0 0 4px 0;
+        font-size: 28px;
+      }
+
+      .topbar p {
+        margin: 0;
+        color: rgba(229, 231, 235, 0.6);
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-icon">F</div>
+          <div>
+            <div class="brand-title">LLM Evaluation</div>
+            <div class="brand-subtitle">Saved Examples</div>
+          </div>
+        </div>
+        <a href="index.html" class="new-chat-btn">← Back to Chat</a>
+        <nav class="sidebar-menu">
+          <a class="sidebar-item" href="index.html">Home</a>
+          <a class="sidebar-item active" href="examples.html">Examples</a>
+          <a class="sidebar-item" href="settings.html">Settings</a>
+        </nav>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div>
+            <h1>Saved Conversations</h1>
+            <p>View and manage your saved conversation history.</p>
+          </div>
+        </header>
+
+        <div id="examplesContainer" class="examples-grid"></div>
+      </main>
+    </div>
+
+    <script>
+      function loadSavedConversations() {
+        const stored = localStorage.getItem('fyp_saved_conversations');
+        if (!stored) return [];
+        try {
+          return JSON.parse(stored);
+        } catch (error) {
+          console.error('Failed to parse saved conversations', error);
+          return [];
+        }
+      }
+
+      function saveSavedConversations(conversations) {
+        try {
+          localStorage.setItem('fyp_saved_conversations', JSON.stringify(conversations));
+        } catch (error) {
+          console.error('Failed to save conversations', error);
+        }
+      }
+
+      function renderConversations() {
+        const container = document.getElementById('examplesContainer');
+        const conversations = loadSavedConversations();
+
+        if (conversations.length === 0) {
+          container.innerHTML = `
+            <div style="grid-column: 1 / -1;">
+              <div class="empty-state">
+                <div class="empty-state-icon">📝</div>
+                <div class="empty-state-text">No saved conversations yet</div>
+                <p>Start a conversation and it will be saved here automatically.</p>
+                <a href="index.html" class="empty-state-link">Go to Chat</a>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = conversations.map((conv) => {
+          const date = new Date(conv.timestamp);
+          const timeStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          
+          // Get preview text from first user message
+          const userMessage = conv.messages.find(m => m.role === 'user');
+          const preview = userMessage?.text || 'No preview available';
+          
+          // Extract model info from settings
+          const model = conv.settings?.model || 'Unknown';
+          const useTextGrad = conv.settings?.includeTextGrad ? 'TextGrad: Yes' : 'TextGrad: No';
+
+          return `
+            <div class="conversation-card">
+              <div class="conversation-title">${escapeHtml(conv.title)}</div>
+              <div class="conversation-timestamp">${timeStr}</div>
+              <div class="conversation-settings">
+                Model: ${escapeHtml(model)} | ${useTextGrad}
+              </div>
+              <div class="conversation-preview">${escapeHtml(preview)}</div>
+              <div class="conversation-actions">
+                <button class="btn btn-load" onclick="loadConversation(${conv.id})">Load</button>
+                <button class="btn btn-delete" onclick="deleteConversation(${conv.id})">Delete</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function loadConversation(id) {
+        const conversations = loadSavedConversations();
+        const conversation = conversations.find(c => c.id === id);
+        if (conversation) {
+          localStorage.setItem('fyp_current_chat', JSON.stringify(conversation.messages));
+          sessionStorage.setItem('fyp_chat_settings', JSON.stringify(conversation.settings));
+          sessionStorage.setItem('fyp_loaded_from_examples', 'true'); // Flag to load the conversation
+          window.location.href = 'index.html';
+        }
+      }
+
+      function deleteConversation(id) {
+        if (confirm('Are you sure you want to delete this conversation?')) {
+          const conversations = loadSavedConversations();
+          const filtered = conversations.filter(c => c.id !== id);
+          saveSavedConversations(filtered);
+          renderConversations();
+        }
+      }
+
+      function escapeHtml(text) {
+        const map = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+      }
+
+      // Apply theme from settings
+      function applyTheme() {
+        const settings = JSON.parse(localStorage.getItem('fyp_chat_settings') || '{}');
+        const darkTheme = settings.darkTheme !== false; // default true
+        document.documentElement.style.colorScheme = darkTheme ? 'dark' : 'light';
+        document.body.style.background = darkTheme
+          ? 'radial-gradient(circle at top left, rgba(16, 163, 127, 0.16), transparent 28%), radial-gradient(circle at 80% 10%, rgba(255, 255, 255, 0.08), transparent 18%), #0b1024'
+          : 'radial-gradient(circle at top left, rgba(16, 163, 127, 0.12), transparent 28%), radial-gradient(circle at 80% 10%, rgba(15, 23, 42, 0.06), transparent 18%), #f8fafc';
+        document.body.style.color = darkTheme ? '#e5e7eb' : '#111827';
+      }
+
+      renderConversations();
+      applyTheme();
+    </script>
+  </body>
+</html>
