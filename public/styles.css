@@ -172,6 +172,7 @@ select {
   gap: 16px;
   overflow-y: auto;
   padding-right: 4px;
+  min-width: 0;
 }
 
 .message {
@@ -180,6 +181,8 @@ select {
   border-radius: 20px;
   line-height: 1.7;
   word-break: break-word;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .message.user {
@@ -193,6 +196,12 @@ select {
   align-self: flex-start;
   background: rgba(15, 23, 42, 0.95);
   border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.message-content {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .message strong {
@@ -502,6 +511,7 @@ input[type="range"] {
   display: inline-block;
   transition: transform 0.2s ease;
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .iteration-container.expanded .iteration-toggle .chevron {
@@ -511,11 +521,12 @@ input[type="range"] {
 .iteration-content {
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.3s ease;
+  transition: max-height 0.4s ease-out;
 }
 
 .iteration-container.expanded .iteration-content {
-  max-height: 2000px;
+  max-height: 5000px;
+  transition: max-height 0.5s ease-in;
 }
 
 .iteration-details {
@@ -523,6 +534,7 @@ input[type="range"] {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
 }
 
 .prompt-section,
@@ -532,6 +544,7 @@ input[type="range"] {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .prompt-section strong,
@@ -548,4 +561,31 @@ input[type="range"] {
   font-size: 14px;
   line-height: 1.6;
   color: #d1d5db;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.final-answer-section {
+  padding: 12px 0;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.final-answer-section strong {
+  color: #a5f3fc;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.error-message {
+  color: #fca5a5;
+  padding: 12px;
+  background: rgba(220, 38, 38, 0.1);
+  border-radius: 8px;
+  border-left: 3px solid #dc2626;
 }

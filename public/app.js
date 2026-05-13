@@ -192,7 +192,7 @@ function setBackendStatus(connected) {
 async function checkBackendStatus() {
   if (!backendStatus) return;
   try {
-    const response = await fetch('/api/status');
+    const response = await fetch('http://localhost:5500/api/status');
     if (!response.ok) throw new Error('status ' + response.status);
     const data = await response.json();
     setBackendStatus(data.status === 'ok');
@@ -204,42 +204,59 @@ async function checkBackendStatus() {
 
 // WebSocket Management Functions
 function initializeWebSocket() {
-  if (ws && wsConnected) return;
+  if (ws) {
+    console.log('WebSocket already exists, state:', ws.readyState);
+    if (ws.readyState === WebSocket.OPEN) {
+      wsConnected = true;
+      return;
+    } else if (ws.readyState === WebSocket.CONNECTING) {
+      console.log('WebSocket is still connecting...');
+      return;
+    }
+  }
   
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/ws/chat`;
+  // Connect directly to Python backend
+  const wsUrl = 'ws://localhost:5500/ws/chat';
+  console.log('Initializing WebSocket connection to:', wsUrl);
   
   ws = new WebSocket(wsUrl);
   
   ws.onopen = () => {
-    console.log('WebSocket connected');
+    console.log('✓ WebSocket connected to Python backend');
     wsConnected = true;
   };
   
   ws.onmessage = (event) => {
     try {
+      console.log('📨 Received WebSocket message:', event.data.substring(0, 100));
       const message = JSON.parse(event.data);
       handleStreamingEvent(message);
     } catch (error) {
-      console.error('Failed to parse WebSocket message:', error);
+      console.error('Failed to parse WebSocket message:', error, event.data);
     }
   };
   
   ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
+    console.error('✗ WebSocket error:', error);
     wsConnected = false;
   };
   
   ws.onclose = () => {
-    console.log('WebSocket closed');
+    console.log('✗ WebSocket closed');
     wsConnected = false;
+    ws = null;
   };
 }
 
 function sendMessageWebSocket(message) {
-  if (!ws || !wsConnected) {
-    throw new Error('WebSocket not connected');
+  if (!ws) {
+    throw new Error('WebSocket not initialized');
   }
+  if (ws.readyState !== WebSocket.OPEN) {
+    console.error('WebSocket state:', ws.readyState, '(0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)');
+    throw new Error('WebSocket not in OPEN state');
+  }
+  console.log('📤 Sending message via WebSocket');
   ws.send(JSON.stringify({
     message,
     settings: state.settings,
@@ -294,7 +311,7 @@ function appendIterationStart(loop, originalPrompt) {
   const contentDiv = getOrCreateAssistantMessageContent();
   
   const iterationContainer = document.createElement('div');
-  iterationContainer.className = 'iteration-container';
+  iterationContainer.className = 'iteration-container expanded';
   iterationContainer.dataset.loop = loop;
   
   const toggleButton = document.createElement('button');
@@ -527,25 +544,26 @@ chatForm.addEventListener('submit', async (event) => {
   messageInput.value = '';
 
   try {
-    if (!ws || !wsConnected) {
-      initializeWebSocket();
-      // Wait for connection
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('WebSocket connection timeout')), 5000);
-        const checkConnection = setInterval(() => {
-          if (wsConnected) {
-            clearTimeout(timeout);
-            clearInterval(checkConnection);
-            resolve();
-          }
-        }, 100);
-      });
+    // Ensure WebSocket is initialized
+    initializeWebSocket();
+    
+    // Wait for connection to be established
+    let attempts = 0;
+    while ((!ws || ws.readyState !== WebSocket.OPEN) && attempts < 50) {
+      console.log(`Waiting for WebSocket... (attempt ${attempts + 1}/50)`);
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
     }
     
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket connection failed after 5 seconds');
+    }
+    
+    console.log('WebSocket ready, sending message...');
     sendMessageWebSocket(text);
   } catch (error) {
-    addMessage('assistant', 'Server not available. Start the backend and reload the page.');
-    console.error(error);
+    console.error('Error sending message:', error);
+    addMessage('assistant', `Error: ${error.message}. Make sure the Python backend is running on localhost:5500.`);
   }
 });
 

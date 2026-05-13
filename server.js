@@ -9,26 +9,23 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// REST API endpoints (optional - kept for compatibility)
 app.post('/api/chat', (req, res) => {
-  const { message, settings } = req.body;
-  const userMessage = (message || '').trim();
-  const systemPrompt = settings?.systemPrompt || 'default system prompt';
-  const model = settings?.model || 'gemma3:4b';
-
-  const reply = userMessage
-    ? `Demo reply from ${model}: I received your message and can honor the system prompt: "${systemPrompt}".`
-    : 'Send a message from the input box to start the demo chat.';
-
-  setTimeout(() => {
-    res.json({ reply });
-  }, 650);
+  res.json({ 
+    message: 'Use WebSocket for streaming. Connect to ws://localhost:5500/ws/chat' 
+  });
 });
 
 app.post('/api/settings', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.get('/api/status', async (req, res) => {
+  res.json({ status: 'ok', message: 'Use Python backend at localhost:5500' });
+});
+
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+  console.log(`Frontend served at http://localhost:${port}`);
+  console.log(`WebSocket and API: ws://localhost:5500/ws/chat and http://localhost:5500`);
 });
