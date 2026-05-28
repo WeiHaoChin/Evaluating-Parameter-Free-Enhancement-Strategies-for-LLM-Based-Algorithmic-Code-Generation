@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import re
+import fitz
 from pathlib import Path
 from dataclasses import dataclass, asdict, field
 from typing import Optional
@@ -242,6 +243,39 @@ class CPHScraper:
         except Exception as e:
             logger.error(f"PDF download failed: {e}")
             return None
+        
+    def extract_from_pdf(self, chapter_num: int, title: str, part: str) -> CPHChapter:
+
+        pdf_path = self.output_dir / "cph_book.pdf"
+        
+        if not pdf_path.exists():
+            return self.create_stub_chapter(chapter_num, title, part)
+        
+        doc = fitz.open(str(pdf_path))
+        text = ""
+        
+        # Find pages containing this chapter
+        for page_num in range(len(doc)):
+            page_text = doc[page_num].get_text()
+            if f"Chapter {chapter_num}" in page_text or title in page_text:
+                text += page_text
+                # Grab next ~10 pages for the chapter body
+                for i in range(1, 11):
+                    if page_num + i < len(doc):
+                        next_text = doc[page_num + i].get_text()
+                        # Stop if we hit the next chapter
+                        if f"Chapter {chapter_num + 1}" in next_text:
+                            break
+                        text += next_text
+                break
+        
+        return CPHChapter(
+            chapter_id=f"cph_ch{chapter_num:02d}",
+            chapter_num=chapter_num,
+            title=title,
+            part=part,
+            content_text=text.strip(),
+        )   
 
     # ── Main entry ────────────────────────────────────────────────────────
     async def scrape(self) -> list[dict]:
@@ -267,7 +301,7 @@ class CPHScraper:
                     chapter = self.parse_latex(latex_source, chapter_num, title, part)
                 else:
                     logger.warning(f"  No LaTeX source for Ch.{chapter_num} — creating stub")
-                    chapter = self.create_stub_chapter(chapter_num, title, part)
+                    chapter = self.extract_from_pdf(chapter_num, title, part)
 
                 doc = asdict(chapter)
                 out_file.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")

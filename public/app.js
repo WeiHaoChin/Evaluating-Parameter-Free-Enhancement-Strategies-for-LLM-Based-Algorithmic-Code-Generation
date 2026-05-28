@@ -264,7 +264,7 @@ function sendMessageWebSocket(message) {
 }
 
 function handleStreamingEvent(event) {
-  const { type, data, loop, answer, original_prompt, updated, original } = event;
+  const { type, data, loop, answer, original_prompt, updated, original, context, prompt } = event;
   
   // Collect all events
   state.collectedEvents.push(event);
@@ -272,6 +272,14 @@ function handleStreamingEvent(event) {
   switch (type) {
     case 'start':
       console.log('Processing started');
+      break;
+      
+    case 'formatted_prompt':
+      appendFormattedPrompt(prompt);
+      break;
+      
+    case 'rag_context':
+      appendRAGContext(context);
       break;
       
     case 'iteration_start':
@@ -305,6 +313,46 @@ function handleStreamingEvent(event) {
     default:
       console.warn('Unknown event type:', type);
   }
+}
+
+function appendFormattedPrompt(prompt) {
+  const contentDiv = getOrCreateAssistantMessageContent();
+  
+  const promptSection = document.createElement('div');
+  promptSection.className = 'formatted-prompt-section';
+  promptSection.innerHTML = `
+    <div class="prompt-header">
+      <span class="prompt-icon">💬</span>
+      <strong>Formatted Prompt Sent to Model</strong>
+    </div>
+    <div class="prompt-content markdown-body"></div>
+  `;
+  
+  const promptContentDiv = promptSection.querySelector('.prompt-content');
+  promptContentDiv.innerHTML = marked.parse(prompt);
+  
+  contentDiv.insertBefore(promptSection, contentDiv.firstChild);
+  chatWindow.scrollTop = chatWindow.scrollHeight;
+}
+
+function appendRAGContext(context) {
+  const contentDiv = getOrCreateAssistantMessageContent();
+  
+  const ragSection = document.createElement('div');
+  ragSection.className = 'rag-context-section';
+  ragSection.innerHTML = `
+    <div class="rag-header">
+      <span class="rag-icon">📚</span>
+      <strong>Knowledge Base Context</strong>
+    </div>
+    <div class="rag-content markdown-body"></div>
+  `;
+  
+  const ragContentDiv = ragSection.querySelector('.rag-content');
+  ragContentDiv.innerHTML = marked.parse(context);
+  
+  contentDiv.insertBefore(ragSection, contentDiv.firstChild);
+  chatWindow.scrollTop = chatWindow.scrollHeight;
 }
 
 function appendIterationStart(loop, originalPrompt) {

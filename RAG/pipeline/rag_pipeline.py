@@ -66,6 +66,8 @@ def html_to_text(html: str) -> str:
 def latex_to_text(latex: str) -> str:
     """Simple LaTeX cleaning (good enough for RAG; not full rendering)."""
     text = latex
+    text = re.sub(r"\\begin\{tikzpicture\}.*?\\end\{tikzpicture\}", "", text, flags=re.DOTALL)
+    text = re.sub(r"\\begin\{center\}.*?\\end\{center\}", "", text, flags=re.DOTALL)
     # Keep math inline but mark it
     text = re.sub(r"\$\$(.+?)\$\$", r"[MATH: \1]", text, flags=re.DOTALL)
     text = re.sub(r"\$(.+?)\$", r"[math: \1]", text)
@@ -357,8 +359,11 @@ def process_cph(doc: dict) -> list[Chunk]:
 
     # Prefer cleaned text
     raw = doc.get("content_text") or latex_to_text(doc.get("content_latex", ""))
+    clean = latex_to_text(raw)
+    if not clean:
+        return []
     if raw:
-        for i, t in enumerate(chunk_text(raw, max_tokens=700)):
+        for i, t in enumerate(chunk_text(clean, max_tokens=700)):
             chunks.append(Chunk(
                 chunk_id=str(uuid.uuid4()),
                 source_id=cid,
