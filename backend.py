@@ -16,7 +16,7 @@ app.add_middleware(
 )
 
 class Settings(BaseModel):
-    model: str = Field(default="mock-chat:1.0")
+    model: str = Field(default="gemma3:4b")
     systemPrompt: str = Field(default="The explanation must be clear and beginner-friendly.")
     darkTheme: bool = Field(default=True)
     temperature: float = Field(default=0.7, ge=0.0, le=1.0)
@@ -37,7 +37,7 @@ def call_llm(message: str, system_prompt: str, model: str, api_key: Optional[str
     """Call the LLM directly without TextGrad."""
     if model.startswith('gemini-'):
         llm = GoogleGenerativeAI(model=model, api_key=api_key)
-    elif model.startswith('gemma3:') or model.startswith('gpt-oss:') or model.startswith('mock-chat:'):
+    elif model.startswith('gemma3:') or model.startswith('gpt-oss:') or model.startswith('deepseek-'):
         llm = OllamaLLM(model=model, api_key=api_key)
     else:
         raise ValueError(f"Unsupported model type: {model}")

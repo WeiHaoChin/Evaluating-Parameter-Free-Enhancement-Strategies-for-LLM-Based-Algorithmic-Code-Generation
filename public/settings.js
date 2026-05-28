@@ -23,18 +23,64 @@ const backToChat = document.getElementById('backToChat');
 
 const defaultSettings = {
   model: 'gemma3:4b',
-  systemPrompt: 'The explanation must be clear and beginner-friendly.',
+  systemPrompt: `You are an expert competitive programmer. Given a competitive programming 
+problem, produce a correct and efficient solution.
+
+Your response must follow this exact structure:
+1. APPROACH: Brief explanation of your algorithm and why it's correct
+2. COMPLEXITY: Time and space complexity analysis
+3. CODE: Complete, runnable solution in Python (or C++ if specified)
+
+Requirements:
+- Handle all edge cases explicitly
+- Ensure your solution fits within the given time and memory constraints
+- Output only the final solution code block, no partial attempts
+- Do not include test scaffolding or input parsing beyond what is needed`,
   darkTheme: true,
-  temperature: 0.7,
+  temperature: 0,
   benchmark: 'TruthfulQA',
-  includeRag: true,
+  includeRag: false,
   includeTextGrad: true,
   textGradModel: 'gemma3:4b',
   textGradLoops: 1,
-  textGradLossPrompt: 'Evaluate this answer. It should be factual, clear, and directly answer the question.',
+  textGradLossPrompt: `You are evaluating a competitive programming solution. Your feedback will 
+be used to improve the prompt that generated this solution.
+
+Evaluate the solution on these criteria:
+1. CORRECTNESS: Does the logic handle all cases including edge cases?
+2. COMPLEXITY: Is the time/space complexity optimal for the constraints?
+3. COMPLETENESS: Is the solution fully implemented and runnable?
+4. CLARITY: Is the approach clearly explained?
+
+For each criterion, state:
+- What the solution did well
+- What specific weakness exists
+- How the PROMPT (not the code) should be changed to elicit a better solution
+
+Focus your feedback on prompt-level issues — e.g. "the prompt should instruct 
+the model to explicitly consider overflow", not "the code has a bug on line 5". 
+The goal is to improve the instruction, not patch the output directly.`,
   apiKey: '',
   textGradApiKey: '',
 };
+const MODELS = [
+  "gemma3:4b",
+  "gpt-oss:120b-cloud",
+  "gemini-2.5-pro",
+  "qwen3-coder-next",
+  "deepseek-v3.2:cloud",
+  "claude-sonnet-4-6",
+  "deepseek-v4-flash:cloud"
+];
+
+function populateSelect(id) {
+  const select = document.getElementById(id);
+  MODELS.forEach(m => {
+    const opt = document.createElement("option");
+    opt.value = opt.textContent = m;
+    select.appendChild(opt);
+  });
+}
 
 function loadSettings() {
   const stored = sessionStorage.getItem('fyp_chat_settings');
@@ -118,9 +164,6 @@ function updateTextGradVisibility(enabled) {
   textGradLoopsInput.required = enabled;
 }
 
-const settings = loadSettings();
-populateForm(settings);
-
 temperatureInput.addEventListener('input', updateSliderValue);
 modelSelect.addEventListener('change', () => updateApiKeyVisibility(modelSelect.value));
 textGradModelSelect.addEventListener('change', () => updateTextGradApiKeyVisibility(textGradModelSelect.value, includeTextGrad.checked));
@@ -155,6 +198,14 @@ saveSettingsBtn.addEventListener('click', () => {
   };
   saveSettings(newSettings);
   showStatus('Settings saved locally.');
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  populateSelect("modelSelect");
+  populateSelect("textGradModelSelect");
+  const settings = loadSettings();
+  populateForm(settings);
+  // ... rest of your existing DOMContentLoaded code
 });
 
 if (backToChat) {

@@ -2,3 +2,5 @@
 secret test.txt
 logs/*.jsonl
 __pycache__
+data
+scraper.log

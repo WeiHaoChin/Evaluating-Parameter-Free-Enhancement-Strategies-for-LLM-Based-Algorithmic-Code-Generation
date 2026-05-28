@@ -65,14 +65,14 @@ def create_textgrad_model(textGradModel, model, api_key=None):
 
     if model.startswith('gemini-'):
         llm = GoogleGenerativeAI(model=model, api_key=api_key or GOOGLE_API_KEY)
-    elif model.startswith('gemma3:') or model.startswith('gpt-oss:') or model.startswith('mock-chat:'):
+    elif model.startswith('gemma3:') or model.startswith('gpt-oss:') or model.startswith('deepseek-'):
         llm = OllamaLLM(model=model, api_key=api_key)
     else:
         raise ValueError(f"Unsupported model type for main LLM: {model}")
     
     if textGradModel.startswith('gemini-'):
         feedback_llm = GoogleGenerativeAI(model=textGradModel, api_key=api_key or GOOGLE_API_KEY)
-    elif textGradModel.startswith('gemma3:') or textGradModel.startswith('gpt-oss:') or textGradModel.startswith('mock-chat:'):
+    elif textGradModel.startswith('gemma3:') or textGradModel.startswith('gpt-oss:') or textGradModel.startswith('deepseek-'):
         feedback_llm = OllamaLLM(model=textGradModel, api_key=api_key)
     else:
         raise ValueError(f"Unsupported model type for TextGrad LLM: {textGradModel}")
@@ -87,9 +87,9 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
         loops = 1
 
     textgrad_model = create_textgrad_model(textGradModel=textGradModel, model=model, api_key=api_key)
-    prompt = Variable(prompt_text, requires_grad=True, role_description='Prompt for LLM')
-    system_prompt_var = Variable(system_prompt, requires_grad=True, role_description='system prompt')
-    optimizer = TGD(parameters=[prompt])
+    prompt = Variable(prompt_text, requires_grad=False, role_description='The user input/question provided to the model. This is fixed and should not be modified.')
+    system_prompt_var = Variable(system_prompt, requires_grad=True, role_description="The system prompt that defines the model's behavior and instructions. Optimize this to improve the quality, accuracy, and clarity of the model's responses.")
+    optimizer = TGD(parameters=[system_prompt_var])
 
     answer_text = ''
     for loop_idx in range(loops):
@@ -131,8 +131,8 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
         loss.backward()
         optimizer.step()
         
-        # Send updated prompt event
-        updated_prompt = prompt.value
+        # Send updated prompt event update system prompt after optimization
+        updated_prompt = system_prompt_var.value
         yield {
             'type': 'prompt_updated',
             'original': prompt_text if loop_idx == 0 else None,
