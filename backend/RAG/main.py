@@ -19,12 +19,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from scrapers.codeforces import CodeforcesScraper
-from scrapers.usaco import USACOScraper
-from scrapers.atcoder import AtCoderScraper
-from scrapers.cp_algorithms import CPAlgorithmsScraper
-from scrapers.cph_book import CPHScraper
-from pipeline.rag_pipeline import RAGPipeline, LocalEmbedder
+from backend.RAG.scrapers.codeforces import CodeforcesScraper
+from backend.RAG.scrapers.usaco import USACOScraper
+from backend.RAG.scrapers.atcoder import AtCoderScraper
+from backend.RAG.scrapers.cp_algorithms import CPAlgorithmsScraper
+from backend.RAG.scrapers.cph_book import CPHScraper
+from backend.RAG.pipeline.rag_pipeline import RAGPipeline, LocalEmbedder
 
 logger = logging.getLogger(__name__)
 

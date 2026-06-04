@@ -48,10 +48,6 @@ async def get_benchmark_status() -> dict:
     """
     return get_status()
 
-@router.get('/benchmark/status')
-async def status():
-    return {'status': 'ok', 'backend': 'available'}
-
 @router.get("/results")
 async def get_results() -> dict:
     """

@@ -8,7 +8,7 @@ from .metrics import compute_metrics
 try:
     from pipeline.solver import run_pipeline
 except ImportError:
-    from solver import run_pipeline
+    from backend.solver import run_pipeline
 
 
 MODES = [
