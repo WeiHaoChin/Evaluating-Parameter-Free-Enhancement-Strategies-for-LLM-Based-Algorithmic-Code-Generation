@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Benchmark - FYP</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-icon">F</div>
+          <div>
+            <div class="brand-title">LLM Evaluation</div>
+            <div class="brand-subtitle">Demo UI</div>
+          </div>
+        </div>
+        <nav class="sidebar-menu">
+          <a class="sidebar-item" href="index.html">Home</a>
+          <a class="sidebar-item" href="examples.html">Examples</a>
+          <a class="sidebar-item" href="benchmark.html" class="active">Benchmark</a>
+          <a class="sidebar-item" href="settings.html">Settings</a>
+        </nav>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div>
+            <h1>CP Solver Benchmark</h1>
+            <p>Evaluate the solver pipeline using LiveCodeBench dataset</p>
+          </div>
+          <div id="backendStatus" class="backend-status">Backend: checking...</div>
+        </header>
+
+        <section class="benchmark-container">
+          <!-- Configuration Panel -->
+          <div class="config-panel">
+            <h2>Benchmark Configuration</h2>
+            <div class="config-grid">
+              <div class="config-field">
+                <label for="versionSelect">Dataset Version:</label>
+                <select id="versionSelect">
+                  <option value="release_v5">release_v5</option>
+                  <option value="release_v4">release_v4</option>
+                </select>
+              </div>
+
+              <div class="config-field">
+                <label for="problemCount">Number of Problems:</label>
+                <div class="input-with-slider">
+                  <input type="number" id="problemCount" min="1" max="100" value="10" />
+                  <input type="range" id="problemCountSlider" min="1" max="100" value="10" />
+                </div>
+              </div>
+
+              <div class="config-field">
+                <label for="difficultySelect">Difficulty Filter:</label>
+                <select id="difficultySelect">
+                  <option value="">All Difficulties</option>
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+            </div>
+
+            <button id="startBenchmarkBtn" class="start-benchmark-btn">
+              Start Benchmark
+            </button>
+          </div>
+
+          <!-- Status Panel -->
+          <div id="statusPanel" class="status-panel" style="display: none;">
+            <h2>Running Benchmark</h2>
+            <div class="progress-section">
+              <div class="progress-header">
+                <span id="currentProblem" class="current-problem"></span>
+                <span id="progressText" class="progress-text">0 / 0</span>
+              </div>
+              <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+              </div>
+              <div class="progress-stats">
+                <span id="timeElapsed">Time elapsed: 0s</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Results Panel -->
+          <div id="resultsPanel" class="results-panel" style="display: none;">
+            <div class="results-header">
+              <h2>Benchmark Results</h2>
+              <button id="exportResultsBtn" class="export-btn">Export JSON</button>
+            </div>
+
+            <!-- Overall Metrics -->
+            <div class="results-section">
+              <h3>Overall Performance</h3>
+              <div class="metrics-grid" id="overallMetrics"></div>
+            </div>
+
+            <!-- By Difficulty -->
+            <div class="results-section">
+              <h3>Performance by Difficulty</h3>
+              <div class="metrics-grid" id="difficultyMetrics"></div>
+            </div>
+
+            <!-- By Platform -->
+            <div class="results-section">
+              <h3>Performance by Platform</h3>
+              <div class="metrics-grid" id="platformMetrics"></div>
+            </div>
+
+            <!-- Error Breakdown -->
+            <div class="results-section">
+              <h3>Error Type Breakdown</h3>
+              <div class="error-table">
+                <div id="errorBreakdown"></div>
+              </div>
+            </div>
+
+            <div class="results-actions">
+              <button id="loadLatestResultsBtn" class="secondary-btn">
+                Load Latest Results
+              </button>
+              <button id="viewResultsHistoryBtn" class="secondary-btn">
+                View Results History
+              </button>
+            </div>
+          </div>
+
+          <!-- History Modal -->
+          <div id="historyModal" class="modal" style="display: none;">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h2>Results History</h2>
+                <button id="closeHistoryBtn" class="close-btn">&times;</button>
+              </div>
+              <div id="historyList" class="history-list"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="benchmark.js"></script>
+  </body>
+</html>
