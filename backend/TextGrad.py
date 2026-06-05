@@ -1,5 +1,5 @@
 import os
-import ollama
+from ollama import Client
 import textgrad as tg
 from textgrad import Variable, TGD
 from dotenv import load_dotenv
@@ -12,10 +12,10 @@ API_KEY = os.getenv('OLLAMA_API_KEY')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
 class OllamaLLM:
-    def __init__(self, model, host='http://localhost:11434', api_key=None):
+    def __init__(self, model, host='https://ollama.com', api_key=None):
         self.model = model
-        self.api_key = api_key
-        self.host = host
+        headers = {'Authorization': f'Bearer {api_key}'} if api_key else {}
+        self.client = Client(host=host, headers=headers)
 
     def __call__(self, prompt, system_prompt=None, **kwargs):
         messages = []
@@ -23,7 +23,7 @@ class OllamaLLM:
             messages.append({'role': 'system', 'content': str(system_prompt)})
         messages.append({'role': 'user', 'content': str(prompt)})
 
-        response = ollama.chat(model=self.model, messages=messages)
+        response = self.client.chat(model=self.model, messages=messages)
         return response['message']['content']
 
 class GoogleGenerativeAI:

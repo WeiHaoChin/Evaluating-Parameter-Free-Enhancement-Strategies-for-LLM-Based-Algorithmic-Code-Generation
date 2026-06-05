@@ -19,7 +19,7 @@ def load_lcb_problems(
         List of problem dicts with: id, title, statement, difficulty, platform,
         release_date, test_cases, private_tests
     """
-    dataset = load_dataset("livecodebench/code_generation_lite", version)
+    dataset = load_dataset("livecodebench/code_generation_lite", version, trust_remote_code=True)
 
     problems = []
     count = 0

@@ -65,12 +65,12 @@ The goal is to improve the instruction, not patch the output directly.`,
 };
 const MODELS = [
   "gemma3:4b",
-  "gpt-oss:120b-cloud",
+  "gpt-oss:120b",
   "gemini-2.5-pro",
   "qwen3-coder-next",
-  "deepseek-v3.2:cloud",
+  "deepseek-v3.2",
   "claude-sonnet-4-6",
-  "deepseek-v4-flash:cloud"
+  "deepseek-v4-flash"
 ];
 
 function populateSelect(id) {

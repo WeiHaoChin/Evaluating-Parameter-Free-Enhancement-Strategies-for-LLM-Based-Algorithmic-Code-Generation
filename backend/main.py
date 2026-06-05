@@ -1,4 +1,3 @@
-# main.py
 import json
 import logging
 import sys
@@ -14,6 +13,7 @@ from solver import call_llm, run_pipeline, build_rag_prompt
 from TextGrad import run_textgrad, run_textgrad_sync
 from rag_handler import initialize_rag, query_rag, format_rag_context, is_rag_available
 from routes.benchmark import router as benchmark_router
+from schemas import Settings, ChatRequest
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -53,26 +53,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ── Schemas ────────────────────────────────────────────────────────────────────
-class Settings(BaseModel):
-    model: str                  = Field(default="gemma3:4b")
-    systemPrompt: str           = Field(default="The explanation must be clear and beginner-friendly.")
-    darkTheme: bool             = Field(default=True)
-    temperature: float          = Field(default=0.7, ge=0.0, le=1.0)
-    benchmark: str              = Field(default="TruthfulQA")
-    includeRag: bool            = Field(default=True)
-    includeTextGrad: bool       = Field(default=True)
-    textGradModel: str          = Field(default="gemma3:4b")
-    textGradLoops: int          = Field(default=1, ge=1)
-    textGradLossPrompt: str     = Field(default="Evaluate this answer. It should be factual, clear, and directly answer the question.")
-    apiKey: Optional[str]       = Field(default=None)
-    textGradApiKey: Optional[str] = Field(default=None)
-
-
-class ChatRequest(BaseModel):
-    message: str
-    settings: Settings
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -235,4 +215,4 @@ app.mount("/", StaticFiles(directory="public", html=True), name="public")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend:app", host="127.0.0.1", port=5500, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=5500, reload=True)

@@ -1,9 +1,10 @@
 # routes/benchmark.py
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from benchmark.runner import run_benchmark, get_status
 from benchmark.logger import save_results, load_latest_results, load_all_results
+from schemas import Settings
 
 router = APIRouter(prefix="/benchmark", tags=["benchmark"])
 
@@ -12,6 +13,7 @@ class BenchmarkRequest(BaseModel):
     version: str = "release_v5"
     n: int = 30
     difficulty: Optional[str] = None
+    settings: Optional[Settings] = Field(default_factory=Settings)
 
 
 @router.post("/run")
@@ -29,6 +31,7 @@ async def start_benchmark(
             version=request.version,
             n=request.n,
             difficulty=request.difficulty,
+            settings=request.settings,
         )
         save_results(result["results"], result["summary"])
 
@@ -38,6 +41,7 @@ async def start_benchmark(
         "status": "started",
         "n_problems": request.n,
         "version": request.version,
+        "settings": request.settings.dict() if request.settings else Settings().dict(),
     }
 
 

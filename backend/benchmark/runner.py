@@ -4,11 +4,8 @@ import time
 from typing import Optional
 from .fetch_lcb import load_lcb_problems
 from .metrics import compute_metrics
-
-try:
-    from pipeline.solver import run_pipeline
-except ImportError:
-    from backend.solver import run_pipeline
+from schemas import Settings
+from solver import run_pipeline
 
 
 MODES = [
@@ -32,7 +29,10 @@ def get_status() -> dict:
 
 
 async def run_benchmark(
-    version: str = "release_v5", n: int = 30, difficulty: Optional[str] = None
+    version: str = "release_v5", 
+    n: int = 30, 
+    difficulty: Optional[str] = None,
+    settings: Optional[Settings] = None
 ) -> dict:
     """
     Run benchmark across all 4 modes.
@@ -41,11 +41,16 @@ async def run_benchmark(
         version: LiveCodeBench dataset version
         n: Number of problems to benchmark
         difficulty: Filter by difficulty
+        settings: Settings instance with model and prompt config (from settings.js)
 
     Returns:
         Dict with results for all problems and all modes
     """
     global benchmark_status
+    
+    # Use default settings if none provided
+    if settings is None:
+        settings = Settings()
 
     benchmark_status["running"] = True
     benchmark_status["progress"] = 0
@@ -68,11 +73,18 @@ async def run_benchmark(
             mode_label = mode["label"]
             try:
                 start_time = time.time()
-                response = run_pipeline(
+                response = await run_pipeline(
                     problem=problem["statement"],
                     test_cases=problem["test_cases"],
                     rag=mode["rag"],
                     textgrad=mode["textgrad"],
+                    system_prompt=settings.systemPrompt,
+                    model=settings.model,
+                    textgrad_model=settings.textGradModel,
+                    textgrad_loops=settings.textGradLoops,
+                    textgrad_loss_prompt=settings.textGradLossPrompt,
+                    api_key=settings.apiKey,
+                    textgrad_api_key=settings.textGradApiKey,
                 )
                 latency = (time.time() - start_time) * 1000
 
