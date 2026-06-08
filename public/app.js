@@ -9,7 +9,8 @@ const backendStatus = document.getElementById('backendStatus');
 let ws = null;
 let wsConnected = false;
 
-const defaultSettings = {
+// Default settings - will be replaced by backend defaults
+let defaultSettings = {
   model: 'gemma3:4b',
   systemPrompt: 'The explanation must be clear and beginner-friendly.',
   darkTheme: true,
@@ -23,6 +24,22 @@ const defaultSettings = {
   apiKey: '',
   textGradApiKey: '',
 };
+
+// Fetch default settings from backend
+async function fetchDefaultSettings() {
+  try {
+    const response = await fetch('http://localhost:5500/api/defaults');
+    if (response.ok) {
+      defaultSettings = await response.json();
+      console.log('Default settings loaded from backend:', defaultSettings);
+    } else {
+      console.warn('Failed to fetch default settings from backend, using fallback');
+    }
+  } catch (error) {
+    console.error('Error fetching default settings:', error);
+    // Use fallback defaults defined above
+  }
+}
 
 function loadSavedSettings() {
   const stored = sessionStorage.getItem('fyp_chat_settings');
@@ -639,12 +656,28 @@ if (newChatBtn) {
   });
 }
 
-renderMessages();
-updateTheme(state.settings.darkTheme);
-checkBackendStatus();
-if (backendStatus) {
-  setInterval(checkBackendStatus, 5000);
+// Initialize app
+async function initializeApp() {
+  // Fetch default settings from backend first
+  await fetchDefaultSettings();
+  
+  // Reload state settings after defaults are fetched
+  state.settings = loadSavedSettings();
+  
+  renderMessages();
+  updateTheme(state.settings.darkTheme);
+  checkBackendStatus();
+  if (backendStatus) {
+    setInterval(checkBackendStatus, 5000);
+  }
+
+  // Initialize WebSocket on load
+  initializeWebSocket();
 }
 
-// Initialize WebSocket on load
-initializeWebSocket();
+// Run initialization when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  initializeApp();
+}

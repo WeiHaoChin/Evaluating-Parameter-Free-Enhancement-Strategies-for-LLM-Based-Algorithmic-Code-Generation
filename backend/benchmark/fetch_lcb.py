@@ -31,7 +31,7 @@ def load_lcb_problems(
         if difficulty and item.get("difficulty") != difficulty:
             continue
 
-        test_cases = item.get("test_cases", [])
+        test_cases = item.get("public_test_cases", [])
         if isinstance(test_cases, str):
             try:
                 test_cases = json.loads(test_cases)
@@ -47,13 +47,13 @@ def load_lcb_problems(
 
         problem = {
             "id": item.get("question_id"),
-            "title": item.get("title"),
-            "statement": item.get("description"),
+            "title": item.get("question_title"),
+            "statement": item.get("question_content"),
             "difficulty": item.get("difficulty"),
-            "platform": item.get("source"),
-            "release_date": item.get("date_created"),
-            "test_cases": test_cases,
-            "private_tests": private_tests,
+            "platform": item.get("platform"),
+            "release_date": item.get("contest_date"),
+            "test_cases": test_cases,        # parsed from "public_test_cases"
+            "private_tests": private_tests,  # parsed from "private_test_cases"
         }
 
         problems.append(problem)

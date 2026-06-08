@@ -4,17 +4,9 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from benchmark.runner import run_benchmark, get_status
 from benchmark.logger import save_results, load_latest_results, load_all_results
-from schemas import Settings
+from schemas import Settings, BenchmarkRequest
 
 router = APIRouter(prefix="/benchmark", tags=["benchmark"])
-
-
-class BenchmarkRequest(BaseModel):
-    version: str = "release_v5"
-    n: int = 30
-    difficulty: Optional[str] = None
-    settings: Optional[Settings] = Field(default_factory=Settings)
-
 
 @router.post("/run")
 async def start_benchmark(
@@ -25,7 +17,7 @@ async def start_benchmark(
     """
     if get_status()["running"]:
         raise HTTPException(status_code=409, detail="Benchmark already running")
-
+    print(f"Starting benchmark with version={request.version}, n={request.n}, difficulty={request.difficulty}, settings={request.settings.dict()}")
     async def run_and_save() -> None:
         result = await run_benchmark(
             version=request.version,
@@ -69,3 +61,11 @@ async def get_all_results() -> list[dict]:
     Get all historical benchmark results.
     """
     return load_all_results()
+
+
+@router.get("/defaults")
+async def get_default_settings() -> dict:
+    """
+    Get default settings from schemas.Settings
+    """
+    return Settings().dict()

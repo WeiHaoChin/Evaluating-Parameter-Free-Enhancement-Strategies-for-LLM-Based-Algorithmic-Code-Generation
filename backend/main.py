@@ -130,6 +130,11 @@ async def chat(request: ChatRequest):
 async def status():
     return {"status": "ok", "backend": "available"}
 
+# ── Default settings endpoint ──────────────────────────────────────────────────
+@app.get("/api/defaults")
+async def get_default_settings():
+    """Get default settings from schemas.Settings"""
+    return Settings().dict()
 
 # ── WebSocket endpoint ─────────────────────────────────────────────────────────
 @app.websocket("/ws/chat")

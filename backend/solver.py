@@ -2,10 +2,10 @@
 import io
 import logging
 import re
-import signal
 import sys
 import time
 from typing import Optional
+import threading
 
 from TextGrad import run_textgrad_sync, OllamaLLM, GoogleGenerativeAI
 from rag_handler import query_rag, format_rag_context, is_rag_available
@@ -53,25 +53,60 @@ def extract_code(response: str) -> str:
 
 # ── Test executor ──────────────────────────────────────────────────────────────
 
+def _run_in_thread(compiled, input_data: str, timeout_seconds: int) -> tuple[Optional[str], Optional[Exception]]:
+    """
+    Execute compiled code in an isolated thread with its own stdin/stdout.
+    Returns (stdout_output, exception_or_None).
+    """
+    stdout_capture = io.StringIO()
+    exc_holder: list[Optional[Exception]] = [None]
+
+    def target():
+        local_stdin  = io.StringIO(input_data)
+        local_stdout = io.StringIO()
+
+        old_stdin  = sys.stdin
+        old_stdout = sys.stdout
+        sys.stdin  = local_stdin
+        sys.stdout = local_stdout
+
+        try:
+            exec(compiled, {"__builtins__": __builtins__, "__name__": "__main__"})
+        except Exception as e:
+            exc_holder[0] = e
+        finally:
+            sys.stdin  = old_stdin
+            sys.stdout = old_stdout
+            stdout_capture.write(local_stdout.getvalue())
+
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    t.join(timeout_seconds)
+
+    if t.is_alive():
+        return None, TimeoutError(f"Exceeded {timeout_seconds}s")
+
+    return stdout_capture.getvalue(), exc_holder[0]
+
+
 def execute_against_tests(
     response: str,
     test_cases: list,
     timeout_seconds: int = 5,
 ) -> tuple[bool, float, Optional[str]]:
     """
-    Run extracted code against test cases in a sandboxed exec.
+    Run extracted code against test cases in an isolated thread.
 
     Returns:
-        passed_all  (bool)          — True if all test cases passed
-        pass_rate   (float)         — fraction of test cases passed (0.0–1.0)
-        error_type  (str | None)    — "WA" | "TLE" | "RE" | "CE" | None
+        passed_all  (bool)   — True if all test cases passed
+        pass_rate   (float)  — fraction of test cases passed (0.0–1.0)
+        error_type  (str)    — "WA" | "TLE" | "RE" | "CE" | None
     """
     if not test_cases:
         return True, 1.0, None
 
     code = extract_code(response)
 
-    # ── compile check ──
     try:
         compiled = compile(code, "<string>", "exec")
     except SyntaxError as e:
@@ -85,46 +120,24 @@ def execute_against_tests(
         input_data = tc.get("input", "")
         expected   = str(tc.get("output", "")).strip()
 
-        old_stdin  = sys.stdin
-        old_stdout = sys.stdout
+        output, exc = _run_in_thread(compiled, input_data, timeout_seconds)
 
-        try:
-            def _timeout_handler(signum, frame):
-                raise TimeoutError()
-
-            signal.signal(signal.SIGALRM, _timeout_handler)
-            signal.alarm(timeout_seconds)
-
-            stdout_capture = io.StringIO()
-            sys.stdin  = io.StringIO(input_data)
-            sys.stdout = stdout_capture
-
-            try:
-                exec(compiled, {})
-            finally:
-                signal.alarm(0)
-                sys.stdin  = old_stdin
-                sys.stdout = old_stdout
-
-            actual = stdout_capture.getvalue().strip()
-
-            if actual == expected:
-                passed += 1
-            else:
-                logger.debug(f"WA — expected: {expected!r}, got: {actual!r}")
-                last_error = "WA"
-
-        except TimeoutError:
-            sys.stdin  = old_stdin
-            sys.stdout = old_stdout
+        if isinstance(exc, TimeoutError):
             logger.warning("TLE: test case exceeded time limit")
             last_error = "TLE"
+            continue
 
-        except Exception as e:
-            sys.stdin  = old_stdin
-            sys.stdout = old_stdout
-            logger.warning(f"RE: {e}")
+        if exc is not None:
+            logger.warning(f"RE: {exc}")
             last_error = "RE"
+            continue
+
+        actual = (output or "").strip()
+        if actual == expected:
+            passed += 1
+        else:
+            logger.warning(f"WA — expected: {expected!r}, got: {actual!r}")
+            last_error = "WA"
 
     pass_rate  = passed / len(test_cases)
     passed_all = passed == len(test_cases)
@@ -195,25 +208,10 @@ async def run_pipeline(
     response            = ""
     first_gen_passed    = False
     first_gen_pass_rate = 0.0
-    second_gen_passed: Optional[bool] = None
 
     if textgrad:
-        logger.info("Running TextGrad (first pass)...")
+        logger.info("Running TextGrad...")
         try:
-            response_first = run_textgrad_sync(
-                prompt_text=formatted_prompt,
-                system_prompt=system_prompt,
-                loops=textgrad_loops,
-                model=model,
-                textGradModel=textgrad_model,
-                api_key=textgrad_api_key,
-                loss_prompt=textgrad_loss_prompt,
-            )
-            first_gen_passed, first_gen_pass_rate, _ = execute_against_tests(
-                response_first, test_cases
-            )
-
-            logger.info("Running TextGrad (second pass with updated prompt)...")
             response = run_textgrad_sync(
                 prompt_text=formatted_prompt,
                 system_prompt=system_prompt,
@@ -223,7 +221,9 @@ async def run_pipeline(
                 api_key=textgrad_api_key,
                 loss_prompt=textgrad_loss_prompt,
             )
-            second_gen_passed, _, _ = execute_against_tests(response, test_cases)
+            first_gen_passed, first_gen_pass_rate, _ = execute_against_tests(
+                response, test_cases
+            )
 
         except Exception as e:
             logger.error(f"TextGrad failed: {e}", exc_info=True)
@@ -260,7 +260,6 @@ async def run_pipeline(
         "pass_rate":            pass_rate,
         "first_gen_passed":     first_gen_passed,
         "first_gen_pass_rate":  first_gen_pass_rate,
-        "second_gen_passed":    second_gen_passed,
         "error_type":           error_type,
         "rag_context_included": bool(rag_context),
         "latency_ms":           latency_ms,

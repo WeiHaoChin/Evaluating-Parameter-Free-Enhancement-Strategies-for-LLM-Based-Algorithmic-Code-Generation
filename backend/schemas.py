@@ -48,3 +48,9 @@ The goal is to improve the instruction, not patch the output directly.""")
 class ChatRequest(BaseModel):
     message: str
     settings: Settings
+
+class BenchmarkRequest(BaseModel):
+    version: str = "release_v5"
+    n: int = 30
+    difficulty: Optional[str] = None
+    settings: Optional[Settings] = Field(default_factory=Settings)

@@ -30,9 +30,11 @@ let benchmarkRunning = false;
 let benchmarkStartTime = null;
 let statusCheckInterval = null;
 let currentResults = null;
+let defaultSettings = null;
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await fetchDefaultSettings();
   checkBackendStatus();
   setupEventListeners();
   linkSliderAndInput();
@@ -56,6 +58,33 @@ function linkSliderAndInput() {
   problemCountSlider.addEventListener('input', (e) => {
     problemCount.value = e.target.value;
   });
+}
+
+async function fetchDefaultSettings() {
+  try {
+    const response = await fetch(`${BACKEND_URL}/benchmark/defaults`);
+    if (response.ok) {
+      defaultSettings = await response.json();
+      console.log('Default settings loaded:', defaultSettings);
+    } else {
+      console.warn('Failed to fetch default settings, will use fallback');
+      defaultSettings = null;
+    }
+  } catch (error) {
+    console.error('Error fetching default settings:', error);
+    defaultSettings = null;
+  }
+}
+
+function loadSavedSettings() {
+  const stored = sessionStorage.getItem('fyp_chat_settings');
+  if (!stored) return defaultSettings || {};
+  try {
+    return { ...defaultSettings, ...JSON.parse(stored) };
+  } catch (error) {
+    console.error('Failed to parse saved settings', error);
+    return defaultSettings || {};
+  }
 }
 
 async function checkBackendStatus() {
@@ -83,6 +112,9 @@ async function startBenchmark() {
   const n = parseInt(problemCount.value) || 10;
   const version = versionSelect.value;
   const difficulty = difficultySelect.value || null;
+  const settings = loadSavedSettings();
+  console.log('Settings being sent:', settings);  // add this
+  console.log('Model:', settings.model);           // add this
 
   if (n < 1 || n > 100) {
     showAlert('Problem count must be between 1 and 100', 'error');
@@ -102,6 +134,7 @@ async function startBenchmark() {
         version,
         n,
         difficulty,
+        settings,
       }),
     });
 

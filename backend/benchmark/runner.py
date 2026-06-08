@@ -51,7 +51,7 @@ async def run_benchmark(
     # Use default settings if none provided
     if settings is None:
         settings = Settings()
-
+    print(f"Running benchmark with settings: {settings.dict()} in runner")
     benchmark_status["running"] = True
     benchmark_status["progress"] = 0
 
