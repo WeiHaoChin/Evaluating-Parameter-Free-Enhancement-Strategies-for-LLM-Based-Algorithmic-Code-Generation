@@ -18,7 +18,7 @@ Requirements:
 - Output only the final solution code block, no partial attempts
 - Do not include test scaffolding or input parsing beyond what is needed""")
     darkTheme: bool             = Field(default=True)
-    temperature: float          = Field(default=0.7, ge=0.0, le=1.0)
+    temperature: float          = Field(default=0.0, ge=0.0, le=1.0)
     benchmark: str              = Field(default="TruthfulQA")
     includeRag: bool            = Field(default=True)
     includeTextGrad: bool       = Field(default=True)

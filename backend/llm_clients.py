@@ -2,10 +2,11 @@ from ollama import Client
 from google import genai
 
 class OllamaLLM:
-    def __init__(self, model, host='https://ollama.com', api_key=None):
+    def __init__(self, model, host='https://ollama.com', api_key=None, temperature=0.0):
         self.model = model
         headers = {'Authorization': f'Bearer {api_key}'} if api_key else {}
         self.client = Client(host=host, headers=headers)
+        self.temperature = temperature
 
     def __call__(self, prompt, system_prompt=None, **kwargs):
         messages = []
@@ -13,15 +14,16 @@ class OllamaLLM:
             messages.append({'role': 'system', 'content': str(system_prompt)})
         messages.append({'role': 'user', 'content': str(prompt)})
 
-        response = self.client.chat(model=self.model, messages=messages)
+        response = self.client.chat(model=self.model, messages=messages, options={'temperature': self.temperature})
         return response['message']['content']
 
 class GoogleGenerativeAI:
-    def __init__(self, model, api_key):
+    def __init__(self, model, api_key,temperature=0.0):
         self.model = model
         self.client = genai.Client(api_key=api_key)
         self.max_retries = 5
         self.initial_delay = 1  # Start with 1 second delay
+        self.temperature = temperature
 
     def __call__(self, prompt, system_prompt=None, **kwargs):
         # For Google models, system_prompt is usually part of the prompt in a multi-turn conversation
@@ -31,7 +33,7 @@ class GoogleGenerativeAI:
         # Retry logic with exponential backoff
         for attempt in range(self.max_retries):
             try:
-                response = self.client.models.generate_content(model=self.model, contents=full_prompt)
+                response = self.client.models.generate_content(model=self.model, contents=full_prompt, config={genai.types.GenerationConfig(temperature=self.temperature)})
                 return response.text
             except Exception as e:
                 error_str = str(e)

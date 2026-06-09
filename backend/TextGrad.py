@@ -11,34 +11,39 @@ load_dotenv()
 API_KEY = os.getenv('OLLAMA_API_KEY')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
-def create_textgrad_model(textGradModel, model, api_key=None):
+def create_textgrad_model(textGradModel, model, api_key=None, textGrad_api_key=None,temperature=0.0):
     llm = None
     feedback_llm = None
 
     if model.startswith('gemini-'):
-        llm = GoogleGenerativeAI(model=model, api_key=api_key or GOOGLE_API_KEY)
+        llm = GoogleGenerativeAI(model=model, api_key=api_key or GOOGLE_API_KEY, temperature=temperature)
     elif model.startswith('gemma3:') or model.startswith('gpt-oss:') or model.startswith('deepseek-'):
-        llm = OllamaLLM(model=model, api_key=api_key)
+        llm = OllamaLLM(model=model, api_key=api_key, temperature=temperature)
     else:
         raise ValueError(f"Unsupported model type for main LLM: {model}")
     
     if textGradModel.startswith('gemini-'):
-        feedback_llm = GoogleGenerativeAI(model=textGradModel, api_key=api_key or GOOGLE_API_KEY)
+        feedback_llm = GoogleGenerativeAI(model=textGradModel, api_key=textGrad_api_key or GOOGLE_API_KEY, temperature=temperature)
     elif textGradModel.startswith('gemma3:') or textGradModel.startswith('gpt-oss:') or textGradModel.startswith('deepseek-'):
-        feedback_llm = OllamaLLM(model=textGradModel, api_key=api_key)
+        feedback_llm = OllamaLLM(model=textGradModel, api_key=textGrad_api_key, temperature=temperature)
     else:
         raise ValueError(f"Unsupported model type for TextGrad LLM: {textGradModel}")
-
+    # Set the backward engine (feedback LLM) that generates textual gradients
+    # during TextGrad's optimization loop — analogous to backprop in neural networks.
+    # override=True replaces any previously configured backward engine.
     tg.set_backward_engine(feedback_llm, override=True)
+    # Wrap the main LLM as a BlackboxLLM node in TextGrad's computation graph.
+    # "Blackbox" means TextGrad interacts with it purely via text in/out,
+    # using the backward engine to critique and iteratively refine its outputs.
     return tg.BlackboxLLM(llm)
 
 
-def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None):
+def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None,textGrad_api_key=None,temperature=0.0):
     """Generator version that yields events for streaming."""
     if loops < 1:
         loops = 1
 
-    textgrad_model = create_textgrad_model(textGradModel=textGradModel, model=model, api_key=api_key)
+    textgrad_model = create_textgrad_model(textGradModel=textGradModel, model=model, api_key=api_key,textGrad_api_key=textGrad_api_key,temperature=temperature)
     prompt = Variable(prompt_text, requires_grad=False, role_description='The user input/question provided to the model. This is fixed and should not be modified.')
     system_prompt_var = Variable(system_prompt, requires_grad=True, role_description="The system prompt that defines the model's behavior and instructions. Optimize this to improve the quality, accuracy, and clarity of the model's responses.")
     optimizer = TGD(parameters=[system_prompt_var])
@@ -108,10 +113,10 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
     }
 
 
-def run_textgrad_sync(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None):
+def run_textgrad_sync(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None, textGrad_api_key=None, temperature=0.0):
     """Synchronous version that collects all events and returns final answer (for backward compatibility)."""
     answer_text = ''
-    for event in run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops, api_key):
+    for event in run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops, api_key, textGrad_api_key, temperature):
         if event['type'] == 'complete':
             answer_text = event['answer']
     return answer_text
@@ -125,6 +130,8 @@ if __name__ == '__main__':
         textGradModel='gpt-oss:120b-cloud',
         model='gemma3:4b',
         api_key=API_KEY,
-        loss_prompt='Evaluate this answer. It should be factual, clear, and directly answer the question.'
+        textGrad_api_key=API_KEY,
+        loss_prompt='Evaluate this answer. It should be factual, clear, and directly answer the question.',
+        temperature=0.0
     )
     print(result)

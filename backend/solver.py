@@ -20,16 +20,17 @@ def call_llm(
     system_prompt: str,
     model: str,
     api_key: Optional[str] = None,
+    temperature: float = 0.0,
 ) -> str:
     """Call LLM directly without TextGrad."""
     if model.startswith("gemini-"):
-        llm = GoogleGenerativeAI(model=model, api_key=api_key)
+        llm = GoogleGenerativeAI(model=model, api_key=api_key, temperature=temperature)
     elif (
         model.startswith("gemma3:")
         or model.startswith("gpt-oss:")
         or model.startswith("deepseek-")
     ):
-        llm = OllamaLLM(model=model, api_key=api_key)
+        llm = OllamaLLM(model=model, api_key=api_key, temperature=temperature)
     else:
         raise ValueError(f"Unsupported model type: {model}")
     return llm(message, system_prompt=system_prompt)
@@ -171,6 +172,7 @@ async def run_pipeline(
     textgrad_loss_prompt: str,
     api_key: Optional[str] = None,
     textgrad_api_key: Optional[str] = None,
+    temperature: float = 0.0,
 ) -> dict:
     """
     Full CP solver pipeline.
@@ -220,6 +222,7 @@ async def run_pipeline(
                 textGradModel=textgrad_model,
                 api_key=textgrad_api_key,
                 loss_prompt=textgrad_loss_prompt,
+                temperature=temperature,
             )
             first_gen_passed, first_gen_pass_rate, _ = execute_against_tests(
                 response, test_cases

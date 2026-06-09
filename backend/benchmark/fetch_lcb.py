@@ -2,6 +2,7 @@
 from typing import Optional
 from datasets import load_dataset
 import json
+import random
 
 
 def load_lcb_problems(
@@ -21,13 +22,9 @@ def load_lcb_problems(
     """
     dataset = load_dataset("livecodebench/code_generation_lite", version, trust_remote_code=True)
 
-    problems = []
-    count = 0
+    all_problems = []
 
     for item in dataset["test"]:
-        if count >= n:
-            break
-
         if difficulty and item.get("difficulty") != difficulty:
             continue
 
@@ -45,18 +42,16 @@ def load_lcb_problems(
             except json.JSONDecodeError:
                 private_tests = []
 
-        problem = {
+        all_problems.append({
             "id": item.get("question_id"),
             "title": item.get("question_title"),
             "statement": item.get("question_content"),
             "difficulty": item.get("difficulty"),
             "platform": item.get("platform"),
             "release_date": item.get("contest_date"),
-            "test_cases": test_cases,        # parsed from "public_test_cases"
-            "private_tests": private_tests,  # parsed from "private_test_cases"
-        }
+            "test_cases": test_cases,
+            "private_tests": private_tests,
+        })
 
-        problems.append(problem)
-        count += 1
-
-    return problems
+    # Randomly sample n problems instead of always taking the first n
+    return random.sample(all_problems, min(n, len(all_problems)))

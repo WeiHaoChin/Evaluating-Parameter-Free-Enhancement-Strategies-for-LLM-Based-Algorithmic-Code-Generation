@@ -100,7 +100,9 @@ async def chat(request: ChatRequest):
                 model=settings.model,
                 textGradModel=settings.textGradModel,
                 api_key=settings.textGradApiKey,
+                textGrad_api_key=settings.textGradApiKey,
                 loss_prompt=settings.textGradLossPrompt,
+                temperature=settings.temperature
             )
             reply = f"TextGrad result after {settings.textGradLoops} loops:\n{result}"
         except Exception as e:
@@ -112,6 +114,7 @@ async def chat(request: ChatRequest):
                 system_prompt=settings.systemPrompt,
                 model=settings.model,
                 api_key=settings.apiKey,
+                temperature=settings.temperature,
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"LLM call failed: {e}")
@@ -180,8 +183,10 @@ async def websocket_chat(websocket: WebSocket):
                         loops=settings.textGradLoops,
                         model=settings.model,
                         textGradModel=settings.textGradModel,
-                        api_key=settings.textGradApiKey,
+                        api_key=settings.apiKey,
+                        textGrad_api_key=settings.textGradApiKey,
                         loss_prompt=settings.textGradLossPrompt,
+                        temperature=settings.temperature
                     ):
                         await websocket.send_text(json.dumps(event))
 
@@ -191,6 +196,7 @@ async def websocket_chat(websocket: WebSocket):
                         system_prompt=settings.systemPrompt,
                         model=settings.model,
                         api_key=settings.apiKey,
+                        temperature=settings.temperature
                     )
                     await websocket.send_text(
                         json.dumps({"type": "complete", "answer": reply})
