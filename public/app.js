@@ -209,7 +209,7 @@ function setBackendStatus(connected) {
 async function checkBackendStatus() {
   if (!backendStatus) return;
   try {
-    const response = await fetch('http://localhost:5500/api/status');
+    const response = await fetch('http://localhost:5050/api/status');
     if (!response.ok) throw new Error('status ' + response.status);
     const data = await response.json();
     setBackendStatus(data.status === 'ok');
@@ -233,7 +233,7 @@ function initializeWebSocket() {
   }
   
   // Connect directly to Python backend
-  const wsUrl = 'ws://localhost:5500/ws/chat';
+  const wsUrl = 'ws://localhost:5050/ws/chat';
   console.log('Initializing WebSocket connection to:', wsUrl);
   
   ws = new WebSocket(wsUrl);

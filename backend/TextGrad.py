@@ -11,7 +11,7 @@ load_dotenv()
 API_KEY = os.getenv('OLLAMA_API_KEY')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
-def create_textgrad_model(textGradModel, model, api_key=None, textGrad_api_key=None,temperature=0.0):
+def create_textgrad_model(textGradModel, model, system_prompt, api_key=None, textGrad_api_key=None,temperature=0.0):
     llm = None
     feedback_llm = None
 
@@ -35,7 +35,7 @@ def create_textgrad_model(textGradModel, model, api_key=None, textGrad_api_key=N
     # Wrap the main LLM as a BlackboxLLM node in TextGrad's computation graph.
     # "Blackbox" means TextGrad interacts with it purely via text in/out,
     # using the backward engine to critique and iteratively refine its outputs.
-    return tg.BlackboxLLM(llm)
+    return tg.BlackboxLLM(llm,system_prompt=system_prompt)
 
 
 def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None,textGrad_api_key=None,temperature=0.0):
@@ -43,9 +43,9 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
     if loops < 1:
         loops = 1
 
-    textgrad_model = create_textgrad_model(textGradModel=textGradModel, model=model, api_key=api_key,textGrad_api_key=textGrad_api_key,temperature=temperature)
     prompt = Variable(prompt_text, requires_grad=False, role_description='The user input/question provided to the model. This is fixed and should not be modified.')
     system_prompt_var = Variable(system_prompt, requires_grad=True, role_description="The system prompt that defines the model's behavior and instructions. Optimize this to improve the quality, accuracy, and clarity of the model's responses.")
+    textgrad_model = create_textgrad_model(textGradModel=textGradModel, model=model, system_prompt=system_prompt_var, api_key=api_key,textGrad_api_key=textGrad_api_key,temperature=temperature)
     optimizer = TGD(parameters=[system_prompt_var])
 
     answer_text = ''
@@ -58,7 +58,7 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
         }
 
         # Get LLM response
-        answer = textgrad_model(system_prompt_var + prompt)
+        answer = textgrad_model(prompt)
         answer_text = answer.value
         print(f"--- Iteration {loop_idx+1} ---")
         print(f"Response: {answer_text}\n")
@@ -89,14 +89,13 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
         optimizer.step()
         
         # Send updated prompt event update system prompt after optimization
-        updated_prompt = system_prompt_var.value
         yield {
             'type': 'prompt_updated',
             'original': prompt_text if loop_idx == 0 else None,
-            'updated': updated_prompt,
+            'updated': system_prompt_var.value,
             'loop': loop_idx + 1
         }
-        print(f"Updated System Prompt: {updated_prompt}\n")
+        print(f"Updated System Prompt: {system_prompt_var.value}\n")
 
         optimizer.zero_grad()
 
@@ -105,7 +104,11 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
             'type': 'iteration_complete',
             'loop': loop_idx + 1
         }
-
+    print(f"Updated input: {system_prompt_var}\n")
+    print(f"Textgrad model parameters: {textgrad_model.parameters()}\n")
+    final_answer = textgrad_model(prompt)
+    answer_text = final_answer.value
+    print(f"Final Updated Answer from textgrad loop: {answer_text}\n")
     # Send final complete event with answer
     yield {
         'type': 'complete',

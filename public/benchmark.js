@@ -1,4 +1,4 @@
-const BACKEND_URL = 'http://localhost:5500';
+const BACKEND_URL = 'http://localhost:5050';
 const STATUS_POLL_INTERVAL = 1000;
 
 // DOM Elements
@@ -6,6 +6,7 @@ const configPanel = document.querySelector('.config-panel');
 const statusPanel = document.getElementById('statusPanel');
 const resultsPanel = document.getElementById('resultsPanel');
 const startBenchmarkBtn = document.getElementById('startBenchmarkBtn');
+const stopBenchmarkBtn = document.getElementById('stopBenchmarkBtn');
 const versionSelect = document.getElementById('versionSelect');
 const problemCount = document.getElementById('problemCount');
 const problemCountSlider = document.getElementById('problemCountSlider');
@@ -25,6 +26,7 @@ const viewResultsHistoryBtn = document.getElementById('viewResultsHistoryBtn');
 const historyModal = document.getElementById('historyModal');
 const closeHistoryBtn = document.getElementById('closeHistoryBtn');
 const historyList = document.getElementById('historyList');
+const problemResultsContainer = document.getElementById('problemResultsContainer');
 
 let benchmarkRunning = false;
 let benchmarkStartTime = null;
@@ -42,6 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function setupEventListeners() {
   startBenchmarkBtn.addEventListener('click', startBenchmark);
+  stopBenchmarkBtn.addEventListener('click', stopBenchmark);
   exportResultsBtn.addEventListener('click', exportResults);
   loadLatestResultsBtn.addEventListener('click', loadLatestResults);
   viewResultsHistoryBtn.addEventListener('click', showResultsHistory);
@@ -158,6 +161,36 @@ async function startBenchmark() {
   }
 }
 
+async function stopBenchmark() {
+  if (!benchmarkRunning) {
+    showAlert('No benchmark is currently running', 'warning');
+    return;
+  }
+
+  try {
+    stopBenchmarkBtn.disabled = true;
+    stopBenchmarkBtn.textContent = 'Stopping...';
+
+    const response = await fetch(`${BACKEND_URL}/benchmark/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to stop benchmark');
+    }
+
+    showAlert('Benchmark stop requested. Please wait...', 'info');
+  } catch (error) {
+    showAlert(`Error stopping benchmark: ${error.message}`, 'error');
+    stopBenchmarkBtn.disabled = false;
+    stopBenchmarkBtn.textContent = 'Stop Benchmark';
+  }
+}
+
 function pollBenchmarkStatus() {
   statusCheckInterval = setInterval(async () => {
     try {
@@ -170,6 +203,8 @@ function pollBenchmarkStatus() {
       if (!status.running) {
         clearInterval(statusCheckInterval);
         benchmarkRunning = false;
+        stopBenchmarkBtn.disabled = false;
+        stopBenchmarkBtn.textContent = 'Stop Benchmark';
         loadResults();
       }
     } catch (error) {
@@ -289,6 +324,9 @@ function displayResults(data) {
     modeDiv.appendChild(table);
     errorBreakdown.appendChild(modeDiv);
   }
+
+  // Individual Problem Results
+  displayProblemResults(data.results);
 }
 
 function createMetricCard(label, passRate, latency, textgradDelta) {
@@ -322,6 +360,63 @@ function createSmallMetricCard(label, passRate, total) {
     <div class="small-metric-subtext">${total} problems</div>
   `;
   return card;
+}
+
+function displayProblemResults(results) {
+  problemResultsContainer.innerHTML = '';
+
+  if (!results || results.length === 0) {
+    problemResultsContainer.innerHTML = '<p style="text-align: center; color: #999;">No problem results available</p>';
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'problem-results-table';
+
+  // Create header row
+  const headerRow = table.insertRow();
+  headerRow.className = 'header-row';
+  headerRow.innerHTML = `
+    <th>Problem</th>
+    <th>Passed</th>
+    <th>Pass Rate</th>
+    <th>First Gen Passed</th>
+    <th>First Gen Pass Rate</th>
+    <th>Error Type</th>
+    <th>RAG Context</th>
+    <th>Latency (ms)</th>
+  `;
+
+  // Add result rows
+  for (const result of results) {
+    const problem = result.problem;
+    const modeResult = result.modes.baseline; // Assuming we're looking at baseline mode
+
+    if (!modeResult) continue;
+
+    const row = table.insertRow();
+    row.className = modeResult.passed ? 'row-passed' : 'row-failed';
+
+    const passedStatus = modeResult.passed ? '✓' : '✗';
+    const passRatePercent = (modeResult.pass_rate * 100).toFixed(1);
+    const firstGenPassedStatus = modeResult.first_gen_passed ? '✓' : '✗';
+    const firstGenPassRatePercent = (modeResult.first_gen_pass_rate * 100).toFixed(1);
+    const ragContextStatus = modeResult.rag_context_included ? 'Yes' : 'No';
+    const errorType = modeResult.error_type || '-';
+
+    row.innerHTML = `
+      <td title="${problem.title}">${problem.title}</td>
+      <td>${passedStatus}</td>
+      <td>${passRatePercent}%</td>
+      <td>${firstGenPassedStatus}</td>
+      <td>${firstGenPassRatePercent}%</td>
+      <td>${errorType}</td>
+      <td>${ragContextStatus}</td>
+      <td>${modeResult.latency_ms.toFixed(0)}</td>
+    `;
+  }
+
+  problemResultsContainer.appendChild(table);
 }
 
 function exportResults() {

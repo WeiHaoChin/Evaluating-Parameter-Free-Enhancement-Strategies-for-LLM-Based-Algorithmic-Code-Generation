@@ -2,7 +2,7 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional
-from benchmark.runner import run_benchmark, get_status
+from benchmark.runner import run_benchmark, get_status, request_stop
 from benchmark.logger import save_results, load_latest_results, load_all_results
 from schemas import Settings, BenchmarkRequest
 
@@ -43,6 +43,21 @@ async def get_benchmark_status() -> dict:
     Get current benchmark status.
     """
     return get_status()
+
+@router.post("/stop")
+async def stop_benchmark() -> dict:
+    """
+    Request the benchmark to stop.
+    """
+    status = get_status()
+    if not status["running"]:
+        raise HTTPException(status_code=400, detail="No benchmark is currently running")
+    
+    request_stop()
+    return {
+        "status": "stop_requested",
+        "message": "Benchmark stop requested"
+    }
 
 @router.get("/results")
 async def get_results() -> dict:

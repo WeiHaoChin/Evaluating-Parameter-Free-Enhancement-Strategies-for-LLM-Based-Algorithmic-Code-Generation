@@ -821,6 +821,43 @@ input[type="range"] {
   cursor: not-allowed;
 }
 
+.status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.status-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #f1f5f9;
+  flex: 1;
+}
+
+.stop-benchmark-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: #ef4444;
+  color: white;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  white-space: nowrap;
+}
+
+.stop-benchmark-btn:hover {
+  background: #dc2626;
+}
+
+.stop-benchmark-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .status-panel {
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(15, 23, 42, 0.95));
   border: 1px solid rgba(148, 163, 184, 0.12);
@@ -1241,6 +1278,64 @@ input[type="range"] {
   color: #fca5a5;
 }
 
+/* Problem Results Table */
+.problem-results-container {
+  overflow-x: auto;
+}
+
+.problem-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.problem-results-table th,
+.problem-results-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.problem-results-table .header-row {
+  background: rgba(16, 163, 127, 0.12);
+}
+
+.problem-results-table th {
+  color: #a5f3fc;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.problem-results-table td {
+  color: #cbd5e1;
+}
+
+.problem-results-table .row-passed {
+  background: rgba(16, 185, 129, 0.04);
+}
+
+.problem-results-table .row-passed:hover {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.problem-results-table .row-failed {
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.problem-results-table .row-failed:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.problem-results-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 @media (max-width: 768px) {
   .config-grid {
     grid-template-columns: 1fr;
@@ -1262,5 +1357,14 @@ input[type="range"] {
 
   .export-btn {
     width: 100%;
+  }
+
+  .problem-results-table {
+    font-size: 0.8rem;
+  }
+
+  .problem-results-table th,
+  .problem-results-table td {
+    padding: 8px 10px;
   }
 }

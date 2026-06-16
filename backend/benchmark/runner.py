@@ -10,9 +10,9 @@ from solver import run_pipeline
 
 MODES = [
     {"rag": False, "textgrad": False, "label": "baseline"},
-    {"rag": True, "textgrad": False, "label": "rag_only"},
-    {"rag": False, "textgrad": True, "label": "textgrad_only"},
-    {"rag": True, "textgrad": True, "label": "full"},
+    #{"rag": True, "textgrad": False, "label": "rag_only"},
+    #{"rag": False, "textgrad": True, "label": "textgrad_only"},
+    #{"rag": True, "textgrad": True, "label": "full"},
 ]
 
 benchmark_status = {
@@ -20,12 +20,25 @@ benchmark_status = {
     "progress": 0,
     "total": 0,
     "current_problem": "",
+    "stop_requested": False,
 }
 
 
 def get_status() -> dict:
     """Get current benchmark status."""
     return benchmark_status.copy()
+
+
+def request_stop() -> None:
+    """Request the benchmark to stop."""
+    global benchmark_status
+    benchmark_status["stop_requested"] = True
+
+
+def reset_stop_flag() -> None:
+    """Reset the stop flag."""
+    global benchmark_status
+    benchmark_status["stop_requested"] = False
 
 
 async def run_benchmark(
@@ -52,6 +65,7 @@ async def run_benchmark(
     if settings is None:
         settings = Settings()
     print(f"Running benchmark with settings: {settings.dict()} in runner")
+    reset_stop_flag()
     benchmark_status["running"] = True
     benchmark_status["progress"] = 0
 
@@ -61,6 +75,16 @@ async def run_benchmark(
     all_results = []
 
     for problem_idx, problem in enumerate(problems):
+        # Check if stop was requested
+        if benchmark_status["stop_requested"]:
+            print("Benchmark stop requested. Halting execution.")
+            benchmark_status["running"] = False
+            benchmark_status["stop_requested"] = False
+            return {
+                "results": all_results,
+                "summary": compute_metrics(all_results) if all_results else {},
+            }
+
         benchmark_status["current_problem"] = problem["title"]
         benchmark_status["progress"] = problem_idx + 1
 
@@ -75,7 +99,7 @@ async def run_benchmark(
                 start_time = time.time()
                 response = await run_pipeline(
                     problem=problem["statement"],
-                    test_cases=problem["test_cases"],
+                    test_cases=problem["private_tests"],
                     rag=mode["rag"],
                     textgrad=mode["textgrad"],
                     system_prompt=settings.systemPrompt,
@@ -101,7 +125,6 @@ async def run_benchmark(
                     "passed": False,
                     "pass_rate": 0.0,
                     "first_gen_passed": False,
-                    "second_gen_passed": False,
                     "error_type": "EXCEPTION",
                     "system_prompt_used": None,
                     "latency_ms": 0,

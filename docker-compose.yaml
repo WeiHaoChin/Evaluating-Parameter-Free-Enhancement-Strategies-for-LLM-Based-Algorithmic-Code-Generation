@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # --- FRONTEND (Your public/ HTML, JS, CSS files) ---
+  frontend:
+    build:
+      context: ./public
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"             # Access your webpage at http://localhost:3000
+    volumes:
+      - ./public:/usr/share/nginx/html # Live sync frontend updates
+    depends_on:
+      - backend
+
+  # --- BACKEND (Your FastAPI backend) ---
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5050:5050"           # Access your Python API docs at http://localhost:5050/docs
+    volumes:
+      - .:/workspace          # Live sync Python files
+      - ./backend/RAG:/workspace/backend/RAG  # RAG folder for data processing
+      - rag_data:/workspace/backend/data      # Persist RAG processed data
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - PYTHONPATH=/workspace/backend
+    depends_on:
+      - chromadb
+
+  # --- RAG VECTOR DATABASE (ChromaDB) ---
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"           # ChromaDB service for RAG embeddings
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+
+volumes:
+  chroma_data:
+  rag_data:

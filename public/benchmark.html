@@ -75,7 +75,10 @@
 
           <!-- Status Panel -->
           <div id="statusPanel" class="status-panel" style="display: none;">
-            <h2>Running Benchmark</h2>
+            <div class="status-header">
+              <h2>Running Benchmark</h2>
+              <button id="stopBenchmarkBtn" class="stop-benchmark-btn">Stop Benchmark</button>
+            </div>
             <div class="progress-section">
               <div class="progress-header">
                 <span id="currentProblem" class="current-problem"></span>
@@ -121,6 +124,12 @@
               <div class="error-table">
                 <div id="errorBreakdown"></div>
               </div>
+            </div>
+
+            <!-- Individual Problem Results -->
+            <div class="results-section">
+              <h3>Individual Problem Results</h3>
+              <div id="problemResultsContainer" class="problem-results-container"></div>
             </div>
 
             <div class="results-actions">

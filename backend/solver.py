@@ -9,6 +9,7 @@ import threading
 
 from TextGrad import run_textgrad_sync, OllamaLLM, GoogleGenerativeAI
 from rag_handler import query_rag, format_rag_context, is_rag_available
+from lcb_runner.evaluation.compute_code_generation_metrics import codegen_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -241,29 +242,62 @@ async def run_pipeline(
                 model=model,
                 api_key=api_key,
             )
-            first_gen_passed, first_gen_pass_rate, _ = execute_against_tests(
-                response, test_cases
-            )
+            # first_gen_passed, first_gen_pass_rate, _ = execute_against_tests(
+            #     response, test_cases
+            # )
         except Exception as e:
             logger.error(f"LLM call failed: {e}", exc_info=True)
             raise
 
     # ── Step 3: Final evaluation ───────────────────────────────────────────────
-    passed, pass_rate, error_type = execute_against_tests(response, test_cases)
+    evaluation_sample       = [{"input_output": test_cases}]  # test_cases passed into run_pipeline
+    generated_code_snippets = [[extract_code(response)]]
+
+    metrics, results, final_metadata = codegen_metrics(
+        evaluation_sample,
+        generated_code_snippets,
+        k_list=[1],
+        num_process_evaluate=1,  # Windows-safe
+        timeout=10,
+    )
+
+    pass_rate  = float(metrics["pass@1"])
+    passed_all = pass_rate == 1.0
+    error_type = None if passed_all else "WA"
+    graded     = results[0] if results else []  # results is a dict keyed by problem index
     latency_ms = int((time.time() - start) * 1000)
 
     logger.info(
-        f"Pipeline done — passed={passed}, pass_rate={pass_rate:.2f}, "
+        f"Pipeline done — passed={passed_all}, pass_rate={pass_rate:.2f}, "
         f"latency={latency_ms}ms, error={error_type}"
     )
 
     return {
         "response":             response,
-        "passed":               passed,
+        "passed":               passed_all,
         "pass_rate":            pass_rate,
+        "graded_list":          graded,
         "first_gen_passed":     first_gen_passed,
         "first_gen_pass_rate":  first_gen_pass_rate,
         "error_type":           error_type,
         "rag_context_included": bool(rag_context),
         "latency_ms":           latency_ms,
     }
+    # passed, pass_rate, error_type = execute_against_tests(response, test_cases)
+    # latency_ms = int((time.time() - start) * 1000)
+
+    # logger.info(
+    #     f"Pipeline done — passed={passed}, pass_rate={pass_rate:.2f}, "
+    #     f"latency={latency_ms}ms, error={error_type}"
+    # )
+
+    # return {
+    #     "response":             response,
+    #     "passed":               passed,
+    #     "pass_rate":            pass_rate,
+    #     "first_gen_passed":     first_gen_passed,
+    #     "first_gen_pass_rate":  first_gen_pass_rate,
+    #     "error_type":           error_type,
+    #     "rag_context_included": bool(rag_context),
+    #     "latency_ms":           latency_ms,
+    # }

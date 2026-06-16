@@ -1,10 +1,11 @@
 # benchmark/fetch_lcb.py
 from typing import Optional
 from datasets import load_dataset
-import json
 import random
+import zlib, base64, json,logging
+import pickle
 
-
+logger = logging.getLogger(__name__)
 def load_lcb_problems(
     version: str = "release_v5", n: int = 30, difficulty: Optional[str] = None
 ) -> list[dict]:
@@ -35,12 +36,12 @@ def load_lcb_problems(
             except json.JSONDecodeError:
                 test_cases = []
 
-        private_tests = item.get("private_test_cases", [])
-        if isinstance(private_tests, str):
-            try:
-                private_tests = json.loads(private_tests)
-            except json.JSONDecodeError:
-                private_tests = []
+        private_tests = item.get("private_test_cases", "")
+        # if isinstance(private_tests, str):
+        #     try:
+        #         private_tests = decode_private_tests(private_tests) 
+        #     except json.JSONDecodeError:
+        #         private_tests = json.loads(private_tests)
 
         all_problems.append({
             "id": item.get("question_id"),
@@ -55,3 +56,21 @@ def load_lcb_problems(
 
     # Randomly sample n problems instead of always taking the first n
     return random.sample(all_problems, min(n, len(all_problems)))
+# def decode_private_tests(raw):
+#     try:
+#         # Step 1: base64 decode
+#         compressed = base64.b64decode(raw)
+#         print(f"base64 decoded length: {len(compressed)}")
+#         # Step 2: zlib decompress
+#         decompressed = zlib.decompress(compressed)
+#         unpickled = pickle.loads(decompressed)
+#         print(f"decompressed content: {repr(decompressed[:200])}")
+#         # Step 3: JSON parse
+#         if isinstance(unpickled, str):
+#             return json.loads(unpickled)
+#         elif isinstance(unpickled, list):
+#             return unpickled
+#         return []
+#     except Exception as e:
+#         logging.warning(f"Failed to decode private tests: {e}")
+#         return []
