@@ -1,0 +1,27 @@
+__pycache__/
+**/__pycache__/
+*.pyc
+.git
+**/.git
+README.md
+**/README.md
+.vscode
+logs/
+*.log
+node_modules/
+.env
+venv
+
+# Exclude raw/intermediate data sources not needed at runtime\
+backend/data/
+backend/data/atcoder/
+backend/data/codeforces/
+backend/data/cp_algorithms/
+backend/data/cph/
+backend/data/usaco/
+
+# Keep only what the running app actually reads:
+# (chunks.jsonl / stats.json sit alongside rag_chunks at the data/ root —
+#  exclude them too unless your app reads them at runtime)
+data/chunks.jsonl
+data/stats.json

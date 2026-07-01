@@ -99,7 +99,7 @@ async def run_benchmark(
                 start_time = time.time()
                 response = await run_pipeline(
                     problem=problem["statement"],
-                    test_cases=problem["private_tests"],
+                    test_cases=problem["evaluation_sample"],
                     rag=mode["rag"],
                     textgrad=mode["textgrad"],
                     system_prompt=settings.systemPrompt,

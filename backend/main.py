@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend.solver import call_llm, run_pipeline, build_rag_prompt
+from solver import call_llm, run_pipeline, build_rag_prompt
 from TextGrad import run_textgrad, run_textgrad_sync
 from rag_handler import initialize_rag, query_rag, format_rag_context, is_rag_available
 from routes.benchmark import router as benchmark_router

@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # --- FRONTEND (Your public/ HTML, JS, CSS files) ---
+  # --- FRONTEND ---
   frontend:
     build:
       context: ./public
@@ -13,7 +13,7 @@ services:
     depends_on:
       - backend
 
-  # --- BACKEND (Your FastAPI backend) ---
+  # --- BACKEND ---
   backend:
     build:
       context: .
@@ -22,8 +22,8 @@ services:
       - "5050:5050"           # Access your Python API docs at http://localhost:5050/docs
     volumes:
       - .:/workspace          # Live sync Python files
-      - ./backend/RAG:/workspace/backend/RAG  # RAG folder for data processing
-      - rag_data:/workspace/backend/data      # Persist RAG processed data
+      - ./backend/data/hf_cache:/workspace/backend/data/hf_cache  # Persist Hugging Face data
+      - rag_data:/workspace/backend/data/rag_chunks      # Persist RAG processed data
     environment:
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000

@@ -17,7 +17,7 @@ async def start_benchmark(
     """
     if get_status()["running"]:
         raise HTTPException(status_code=409, detail="Benchmark already running")
-    print(f"Starting benchmark with version={request.version}, n={request.n}, difficulty={request.difficulty}, settings={request.settings.dict()}")
+    # print(f"Starting benchmark with version={request.version}, n={request.n}, difficulty={request.difficulty}, settings={request.settings.dict()}")
     async def run_and_save() -> None:
         result = await run_benchmark(
             version=request.version,
