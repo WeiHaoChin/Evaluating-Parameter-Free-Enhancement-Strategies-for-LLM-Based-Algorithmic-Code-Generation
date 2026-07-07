@@ -18,6 +18,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    shm_size: '2gb'
     ports:
       - "5050:5050"           # Access your Python API docs at http://localhost:5050/docs
     volumes:

@@ -1,5 +1,6 @@
 # pipeline/solver.py
 import io
+import json
 import logging
 import re
 import sys
@@ -158,12 +159,33 @@ def build_rag_prompt(problem: str, rag_context: str) -> str:
 ## Task
 Solve the problem. Use the context above only if it is relevant."""
 
+def build_task_prompt(problem: str, starter_code: Optional[str]) -> str:
+    """Frame the problem the way LCB does: give the model the exact
+    function/class skeleton for call-based problems, or explicit
+    stdin/stdout instructions otherwise."""
+    if starter_code:
+        return (
+            f"## Problem\n{problem}\n\n"
+            "## Starter Code\n"
+            "You will use the following starter code to write your solution. "
+            "Implement your logic inside it and do not change the signature.\n"
+            f"```python\n{starter_code}\n```"
+        )
+    else:
+        return (
+            f"## Problem\n{problem}\n\n"
+            "## I/O\n"
+            "Read all input from stdin and write your final answer to stdout. "
+            "Do not define a class or function — write a script that runs "
+            "directly when executed."
+        )
+
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────
 
 async def run_pipeline(
     problem: str,
-    test_cases: list,
+    evaluation_sample: list,
     rag: bool,
     textgrad: bool,
     system_prompt: str,
@@ -174,6 +196,7 @@ async def run_pipeline(
     api_key: Optional[str] = None,
     textgrad_api_key: Optional[str] = None,
     temperature: float = 0.0,
+    starter_code: Optional[str] = None, 
 ) -> dict:
     """
     Full CP solver pipeline.
@@ -187,8 +210,9 @@ async def run_pipeline(
     """
     start = time.time()
 
+    formatted_prompt = build_task_prompt(problem, starter_code)
+
     # ── Step 1: RAG augmentation ───────────────────────────────────────────────
-    formatted_prompt = problem
     rag_context      = ""
 
     if rag:
@@ -242,15 +266,17 @@ async def run_pipeline(
                 model=model,
                 api_key=api_key,
             )
-            # first_gen_passed, first_gen_pass_rate, _ = execute_against_tests(
-            #     response, test_cases
-            # )
         except Exception as e:
             logger.error(f"LLM call failed: {e}", exc_info=True)
             raise
 
     # ── Step 3: Final evaluation ───────────────────────────────────────────────
-    evaluation_sample       = [{"input_output": test_cases}]  # test_cases passed into run_pipeline
+    # test_data = {
+    # "inputs": [t[0] for t in test_cases] if isinstance(test_cases[0], (tuple, list)) else test_cases.get("inputs", []),
+    # "outputs": [t[1] for t in test_cases] if isinstance(test_cases[0], (tuple, list)) else test_cases.get("outputs", []),
+    # "fn_name": test_cases.get("fn_name", None)  # Competitive programming problems use standard I/O streams, so fn_name is None
+    # }
+    evaluation_sample = [evaluation_sample] # evaluation_sample passed into run_pipeline
     generated_code_snippets = [[extract_code(response)]]
 
     metrics, results, final_metadata = codegen_metrics(
@@ -260,9 +286,29 @@ async def run_pipeline(
         num_process_evaluate=1,  # Windows-safe
         timeout=10,
     )
-
-    pass_rate  = float(metrics["pass@1"])
-    passed_all = pass_rate == 1.0
+    parsed_metadata = []
+    for item in final_metadata:
+        cleaned_list = []
+        for x in item:
+            if isinstance(x, str):
+                try:
+                    cleaned_list.append(json.loads(x))
+                except Exception:
+                    cleaned_list.append(x)
+            elif isinstance(x, dict):
+                # If it's already a dictionary (like the WA error frame), 
+                # keep it as a dict so it passes through safely!
+                cleaned_list.append(x)
+            else:
+                cleaned_list.append(x)
+        parsed_metadata.append(cleaned_list)
+    print("metrics:", metrics)
+    print("results type:", type(results))
+    print("results:", results)
+    print("final_metadata:", final_metadata)
+    test_results = results[0][0]
+    pass_rate = sum(test_results) / len(test_results) if test_results else 0.0
+    passed_all = all(test_results)
     error_type = None if passed_all else "WA"
     graded     = results[0] if results else []  # results is a dict keyed by problem index
     latency_ms = int((time.time() - start) * 1000)
@@ -274,6 +320,7 @@ async def run_pipeline(
 
     return {
         "response":             response,
+        "generated_code":       generated_code_snippets,    
         "passed":               passed_all,
         "pass_rate":            pass_rate,
         "graded_list":          graded,
@@ -282,22 +329,7 @@ async def run_pipeline(
         "error_type":           error_type,
         "rag_context_included": bool(rag_context),
         "latency_ms":           latency_ms,
+        "metrics":               metrics,
+        "metadata":              parsed_metadata,
+        "results":               results,
     }
-    # passed, pass_rate, error_type = execute_against_tests(response, test_cases)
-    # latency_ms = int((time.time() - start) * 1000)
-
-    # logger.info(
-    #     f"Pipeline done — passed={passed}, pass_rate={pass_rate:.2f}, "
-    #     f"latency={latency_ms}ms, error={error_type}"
-    # )
-
-    # return {
-    #     "response":             response,
-    #     "passed":               passed,
-    #     "pass_rate":            pass_rate,
-    #     "first_gen_passed":     first_gen_passed,
-    #     "first_gen_pass_rate":  first_gen_pass_rate,
-    #     "error_type":           error_type,
-    #     "rag_context_included": bool(rag_context),
-    #     "latency_ms":           latency_ms,
-    # }

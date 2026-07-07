@@ -99,7 +99,7 @@ async def run_benchmark(
                 start_time = time.time()
                 response = await run_pipeline(
                     problem=problem["statement"],
-                    test_cases=problem["evaluation_sample"],
+                    evaluation_sample=problem["evaluation_sample"],
                     rag=mode["rag"],
                     textgrad=mode["textgrad"],
                     system_prompt=settings.systemPrompt,
@@ -109,6 +109,7 @@ async def run_benchmark(
                     textgrad_loss_prompt=settings.textGradLossPrompt,
                     api_key=settings.apiKey,
                     textgrad_api_key=settings.textGradApiKey,
+                    starter_code=problem.get("starter_code"),
                 )
                 latency = (time.time() - start_time) * 1000
 

@@ -10,7 +10,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import json
 import multiprocessing
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 import numpy as np
@@ -20,39 +20,49 @@ from backend.lcb_runner.evaluation.testing_util import run_test
 from backend.lcb_runner.evaluation.pass_k_utils import compute_metrics_from_results
 
 
-def _temp_run(sample, generation, debug, result, metadata_list, timeout):
+# Use spawn instead of the (Linux) default fork. Forking a subprocess out of
+# an already-threaded parent (e.g. a uvicorn/FastAPI worker) is unsafe with
+# multiprocessing.Manager: the child inherits a proxy object but not a live
+# connection to the Manager's server process, and reconnecting from the
+# child can fail intermittently (FileNotFoundError / ForkAwareLocal errors).
+# A Queue avoids the reconnect entirely, and spawn avoids the fork-after-
+# threads hazard on top of that.
+mp_ctx = multiprocessing.get_context("fork")
+
+
+def _temp_run(sample, generation, debug, timeout, q):
     res, metadata = run_test(sample, test=generation, debug=debug, timeout=timeout)
-    result.append(res)
-    metadata_list.append(metadata)
+    q.put((res, metadata))
 
 
 def check_correctness(sample, generation, timeout, debug=True):
-    """Check correctness of code generation with a global timeout.
-    The global timeout is to catch some extreme/rare cases not handled by the timeouts
-    inside `run_test`"""
-
-    manager = multiprocessing.Manager()
-    result = manager.list()
-    metadata_list = manager.list()
-    p = multiprocessing.Process(
+    q = mp_ctx.Queue()
+    p = mp_ctx.Process(
         target=_temp_run,
-        args=(sample, generation, debug, result, metadata_list, timeout),
+        args=(sample, generation, debug, timeout, q),
     )
     p.start()
     p.join(
         timeout=(timeout + 1) * len(json.loads(sample["input_output"])["inputs"]) + 5
     )
-    if p.is_alive():
-        p.kill()
-        p.join()
-    if not result:
-        in_outs = json.loads(sample["input_output"])
-        # consider that all tests failed
-        result = [[-1 for i in range(len(in_outs["inputs"]))]]
-        if debug:
-            print(f"global timeout")
-    return result[0], metadata_list[0]
 
+    try:
+        if not q.empty():
+            result, metadata = q.get()
+        else:
+            in_outs = json.loads(sample["input_output"])
+            result = [-1 for i in range(len(in_outs["inputs"]))]
+            metadata = {}
+            if debug:
+                print("global timeout")
+    finally:
+        if p.is_alive():
+            p.kill()
+        p.join()
+        q.close()
+        q.join_thread()
+
+    return result, metadata
 
 def evaluate_generations_by_problem(args):
     problem_generations: list[str] = args[0]
@@ -113,26 +123,13 @@ def evaluate_generations(
     num_process_evaluate: int = 16,
     timeout=6,
 ):
-    """We take the list of code generations and try to compile them
-     and the run their corresponding unit tests which are retrieved from the APPS dataset.
-
-    Args:
-        generations: list of code generations (same order as samples in APPS dataset)
-        level: difficulty level used in the generation, can be "all", "introductory", "interview" or "competition"
-
-    Returns:
-        results: dictionary of results, key is the problem index, value is a list of results for each generation
-    """
-
-    # generations are code generations in the same order of the dataset
-
     inputs = [
         [(generations_list[index], samples_list[index], debug, timeout), index]
         for index in range(len(generations_list))
     ]
 
     with tqdm(total=len(inputs)) as pbar:
-        with ProcessPoolExecutor(
+        with ThreadPoolExecutor(
             max_workers=1 if debug else num_process_evaluate
         ) as executor:
             futures = {
@@ -150,7 +147,6 @@ def evaluate_generations(
     assert len(results) == len(
         inputs
     ), f"results = {len(results)} inputs = {len(inputs)} {results=}"
-    # results = {i: r for r, (_, i) in zip(results, inputs)}
 
     return results, metadata
 
@@ -211,42 +207,3 @@ def codegen_metrics(
         ), f"{len(final_metadata[i])=}"
 
     return [metrics, results, final_metadata]
-
-
-if __name__ == "__main__":
-    # print(
-    #     check_correctness(
-    #         {
-    #             "input_output": json.dumps(
-    #                 {
-    #                     "inputs": [
-    #                         json.dumps([1] * 100000)
-    #                         + "\n"
-    #                         + json.dumps([100000, -100000] * (100000 // 2))
-    #                     ],
-    #                     "outputs": [json.dumps([100000, 0] * (100000 // 2))],
-    #                     "fn_name": "mostFrequentIDs",
-    #                 }
-    #             )
-    #         },
-    #         "class Solution:\n    def mostFrequentIDs(self, nums: List[int], freq: List[int]) -> List[int]:\n        from collections import defaultdict\n        \n        # Count of each ID\n        count = defaultdict(int)\n        # How many IDs exist for a given frequency\n        freq_of_count = defaultdict(int)\n        \n        max_freq = 0\n        ans = []\n        \n        for i in range(len(nums)):\n            x = nums[i]\n            change = freq[i]\n            \n            old_freq = count[x]\n            new_freq = old_freq + change\n            \n            # If there was an old frequency, decrease its usage\n            if old_freq > 0:\n                freq_of_count[old_freq] -= 1\n                if freq_of_count[old_freq] == 0:\n                    del freq_of_count[old_freq]\n            \n            # Update with the new frequency\n            count[x] = new_freq\n            freq_of_count[new_freq] += 1\n            \n            # Update max_freq if needed\n            if new_freq > max_freq:\n                max_freq = new_freq\n            \n            # If the collection at max_freq is empty, reduce max_freq until we find a non-empty bin\n            while max_freq > 0 and max_freq not in freq_of_count:\n                max_freq -= 1\n            \n            # If the collection is empty, max_freq will be 0\n            ans.append(max_freq)\n        \n        return ans",
-    #         6,
-    #         debug=True,
-    #     )
-    # )
-
-    print(
-        check_correctness(
-            {
-                "input_output": json.dumps(
-                    {
-                        "inputs": ")))))",
-                        "outputs": "0",
-                    },
-                )
-            },
-            "\nMOD = 998244353\n\nS = input().strip()\nn = len(S)\n\nif n % 2 != 0:\n    print(0)\n    exit()\n\n# Initialize DP table\ndp = [[0] * (n + 2) for _ in range(n + 1)]\ndp[0][0] = 1\n\nfor i in range(1, n + 1):\n    c = S[i-1]\n    for b in range(n + 1):\n        if dp[i-1][b] == 0:\n            continue\n        if c == '(':\n            new_b = b + 1\n            if new_b <= n:\n                dp[i][new_b] = (dp[i][new_b] + dp[i-1][b]) % MOD\n        elif c == ')':\n            if b > 0:\n                new_b = b - 1\n                dp[i][new_b] = (dp[i][new_b] + dp[i-1][b]) % MOD\n        else:  # '?'\n            # Replace with '('\n            new_b = b + 1\n            if new_b <= n:\n                dp[i][new_b] = (dp[i][new_b] + dp[i-1][b]) % MOD\n            # Replace with ')'\n            if b > 0:\n                new_b = b - 1\n                dp[i][new_b] = (dp[i][new_b] + dp[i-1][b]) % MOD\n\nprint(dp[n][0] % MOD)\n",
-            6,
-            debug=True,
-        )
-    )

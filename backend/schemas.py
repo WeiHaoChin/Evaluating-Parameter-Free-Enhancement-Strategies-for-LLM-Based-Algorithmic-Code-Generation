@@ -1,6 +1,6 @@
 from typing import Optional
 from pydantic import BaseModel, Field
-
+# 1. APPROACH: Brief explanation of your algorithm and why it's correct
 # ── Schemas ────────────────────────────────────────────────────────────────────
 class Settings(BaseModel):
     model: str                  = Field(default="gemma3:4b")
@@ -8,9 +8,8 @@ class Settings(BaseModel):
 problem, produce a correct and efficient solution.
 
 Your response must follow this exact structure:
-1. APPROACH: Brief explanation of your algorithm and why it's correct
-2. COMPLEXITY: Time and space complexity analysis
-3. CODE: Complete, runnable solution in Python (or C++ if specified)
+1. COMPLEXITY: Time and space complexity analysis
+2. CODE: Complete, runnable solution in Python
 
 Requirements:
 - Handle all edge cases explicitly

@@ -100,6 +100,7 @@ def load_lcb_problems(
             "release_date": item.get("contest_date"),
             "test_cases": test_cases,
             "private_tests": private_tests,
+            "starter_code": item.get("starter_code") or None,
             "evaluation_sample": evaluation_sample
         })
 
