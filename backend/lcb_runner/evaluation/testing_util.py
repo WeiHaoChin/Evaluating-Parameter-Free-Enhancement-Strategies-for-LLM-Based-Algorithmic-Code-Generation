@@ -250,6 +250,8 @@ def grade_call_based(
 
     total_execution = 0
     all_results = []
+    failure_details = []  # NEW: every failure, not just the first
+
     for idx, (gt_inp, gt_out) in enumerate(zip(all_inputs, all_outputs)):
         signal.alarm(timeout)
         faulthandler.enable()
@@ -272,48 +274,46 @@ def grade_call_based(
             all_results.append(tmp_result)
 
             if not tmp_result:
-                return all_results, {
+                failure_details.append({
+                    "test_idx": idx,
                     "output": truncatefn(prediction),
                     "inputs": truncatefn(gt_inp),
                     "expected": truncatefn(gt_out),
                     "error_code": -2,
                     "error_message": "Wrong Answer",
-                }
+                })
         except Exception as e:
             signal.alarm(0)
             if "timeoutexception" in repr(e).lower():
                 all_results.append(-3)
-                return all_results, {
+                failure_details.append({
+                    "test_idx": idx,
                     "error": repr(e),
                     "error_code": -3,
                     "error_message": "Time Limit Exceeded",
                     "inputs": truncatefn(gt_inp),
                     "expected": truncatefn(gt_out),
-                }
+                })
             else:
                 all_results.append(-4)
-                return all_results, {
+                failure_details.append({
+                    "test_idx": idx,
                     "error": repr(e),
                     "error_code": -4,
                     "error_message": "Runtime Error",
                     "inputs": truncatefn(gt_inp),
                     "expected": truncatefn(gt_out),
-                }
-
+                })
         finally:
             signal.alarm(0)
             faulthandler.disable()
 
-    return all_results, {"execution time": total_execution}
+    metadata = dict(failure_details[0]) if failure_details else {"execution time": total_execution}
+    metadata["failure_details"] = failure_details
+    return all_results, metadata
 
 
-def grade_stdio(
-    code: str,
-    all_inputs: list,
-    all_outputs: list,
-    timeout: int,
-):
-    ## runtime doesn't interact well with __name__ == '__main__'
+def grade_stdio(code: str, all_inputs: list, all_outputs: list, timeout: int):
     code = clean_if_name(code)
 
     ## we wrap the given code inside another function
@@ -330,11 +330,14 @@ def grade_stdio(
 
     all_results = []
     total_execution_time = 0
+    failure_details = []  # NEW: every failure, not just the first
+
     for idx, (gt_inp, gt_out) in enumerate(zip(all_inputs, all_outputs)):
         signal.alarm(timeout)
         faulthandler.enable()
 
         signal.alarm(timeout)
+
         with Capturing() as captured_output:
             try:
                 start = time.time()
@@ -346,23 +349,25 @@ def grade_stdio(
                 signal.alarm(0)
                 if "timeoutexception" in repr(e).lower():
                     all_results.append(-3)
-                    return all_results, {
+                    failure_details.append({
+                        "test_idx": idx,
                         "error": repr(e),
                         "error_code": -3,
                         "error_message": "Time Limit Exceeded",
                         "inputs": truncatefn(gt_inp),
                         "expected": truncatefn(gt_out),
-                    }
+                    })
                 else:
                     all_results.append(-4)
-                    return all_results, {
+                    failure_details.append({
+                        "test_idx": idx,
                         "error": repr(e),
                         "error_code": -4,
                         "error_message": "Runtime Error",
                         "inputs": truncatefn(gt_inp),
                         "expected": truncatefn(gt_out),
-                    }
-
+                    })
+                continue  # nothing was captured, skip grading below
             finally:
                 signal.alarm(0)
                 faulthandler.disable()
@@ -375,6 +380,7 @@ def grade_stdio(
         ## WA happens in multiple circumstances
         ## so cache the return to make it clean!
         WA_send_args = {
+            "test_idx": idx,
             "output": truncatefn(prediction),
             "inputs": truncatefn(gt_inp),
             "expected": truncatefn(gt_out),
@@ -384,8 +390,10 @@ def grade_stdio(
         if len(stripped_prediction_lines) != len(stripped_gt_out_lines):
             all_results.append(-2)
             WA_send_args["error_message"] = "Wrong answer: mismatched output length"
-            return all_results, WA_send_args
+            failure_details.append(WA_send_args)
+            continue
 
+        line_failed = False
         for output_line_idx, (
             stripped_prediction_line,
             stripped_gt_out_line,
@@ -398,31 +406,30 @@ def grade_stdio(
             if stripped_prediction_line == stripped_gt_out_line:
                 continue
 
-            ## CASE 2: element-wise comparision
-            ## if there are floating elements
-            ## use `decimal` library for good floating point comparision
-            ## otherwise gotcha: np.isclose(50000000000000000, 50000000000000001) = True
-            ## note that we should always be able to convert to decimals
-
-            success, decimal_prediction_line = convert_line_to_decimals(
-                stripped_prediction_line
-            )
+            success, decimal_prediction_line = convert_line_to_decimals(stripped_prediction_line)
             if not success:
-                all_results.append(-2)
-                return all_results, WA_send_args
+                line_failed = True
+                break
             success, decimal_gtout_line = convert_line_to_decimals(stripped_gt_out_line)
             if not success:
-                all_results.append(-2)
-                return all_results, WA_send_args
+                line_failed = True
+                break
 
             if decimal_prediction_line == decimal_gtout_line:
                 continue
 
-            all_results.append(-2)
-            return all_results, WA_send_args
-        all_results.append(True)
+            line_failed = True
+            break
 
-    return all_results, {"execution time": total_execution_time}
+        if line_failed:
+            all_results.append(-2)
+            failure_details.append(WA_send_args)
+        else:
+            all_results.append(True)
+
+    metadata = dict(failure_details[0]) if failure_details else {"execution time": total_execution_time}
+    metadata["failure_details"] = failure_details
+    return all_results, metadata
 
 
 def run_test(sample, test=None, debug=False, timeout=6):
