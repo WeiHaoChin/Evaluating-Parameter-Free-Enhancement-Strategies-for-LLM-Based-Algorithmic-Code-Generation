@@ -13,9 +13,7 @@ let wsConnected = false;
 let defaultSettings = {
   model: 'gemma3:4b',
   systemPrompt: 'The explanation must be clear and beginner-friendly.',
-  darkTheme: true,
   temperature: 0.7,
-  benchmark: 'TruthfulQA',
   includeRag: true,
   includeTextGrad: true,
   textGradModel: 'gemma3:4b',
@@ -45,7 +43,8 @@ function loadSavedSettings() {
   const stored = sessionStorage.getItem('fyp_chat_settings');
   if (!stored) return defaultSettings;
   try {
-    return { ...defaultSettings, ...JSON.parse(stored) };
+    const { benchmark, darkTheme, ...savedSettings } = JSON.parse(stored);
+    return { ...defaultSettings, ...savedSettings };
   } catch (error) {
     console.error('Failed to parse saved settings', error);
     return defaultSettings;
@@ -94,7 +93,7 @@ function saveConversation(messages, settings) {
   const conversations = loadSavedConversations();
   
   // Filter out the welcome message - but keep all user and assistant messages
-  const welcomeText = 'Welcome! This demo UI is styled like ChatGPT. Open the settings page to customize model, benchmark, or evaluation settings.';
+  const welcomeText = 'Welcome! This demo UI is styled like ChatGPT. Open the settings page to customize model or evaluation settings.';
   const filteredMessages = messages.filter(m => {
     // Keep all messages except the welcome message from assistant
     if (m.role === 'assistant' && m.text === welcomeText) {
@@ -186,14 +185,6 @@ function addMessage(role, text) {
   state.messages.push({ role, text });
   saveCurrentChat(state.messages);
   renderMessages();
-}
-
-function updateTheme(darkMode) {
-  document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light';
-  document.body.style.background = darkMode
-    ? 'radial-gradient(circle at top left, rgba(16, 163, 127, 0.16), transparent 28%), radial-gradient(circle at 80% 10%, rgba(255, 255, 255, 0.08), transparent 18%), #0b1024'
-    : 'radial-gradient(circle at top left, rgba(16, 163, 127, 0.12), transparent 28%), radial-gradient(circle at 80% 10%, rgba(15, 23, 42, 0.06), transparent 18%), #f8fafc';
-  document.body.style.color = darkMode ? '#e5e7eb' : '#111827';
 }
 
 function saveSettings(settings) {
@@ -648,7 +639,7 @@ if (newChatBtn) {
     state.messages = [
       {
         role: 'assistant',
-        text: 'Welcome! This demo UI is styled like ChatGPT. Open the settings page to customize model, benchmark, or evaluation settings.',
+        text: 'Welcome! This demo UI is styled like ChatGPT. Open the settings page to customize model or evaluation settings.',
       },
     ];
     saveCurrentChat(state.messages);
@@ -665,7 +656,6 @@ async function initializeApp() {
   state.settings = loadSavedSettings();
   
   renderMessages();
-  updateTheme(state.settings.darkTheme);
   checkBackendStatus();
   if (backendStatus) {
     setInterval(checkBackendStatus, 5000);

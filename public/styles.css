@@ -296,6 +296,25 @@ body.page-leaving .app-shell {
   cursor: pointer;
 }
 
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.secondary-button {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 16px;
+  padding: 16px 20px;
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.7);
+  cursor: pointer;
+}
+
+.secondary-button:hover {
+  background: rgba(30, 41, 59, 0.9);
+}
+
 
 .settings-header {
   display: flex;

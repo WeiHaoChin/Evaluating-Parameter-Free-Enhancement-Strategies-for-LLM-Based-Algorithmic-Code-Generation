@@ -1,5 +1,4 @@
 const modelSelect = document.getElementById('modelSelect');
-const benchmarkSelect = document.getElementById('benchmarkSelect');
 const temperatureInput = document.getElementById('temperature');
 const temperatureValue = document.getElementById('temperatureValue');
 const apiKeySection = document.getElementById('apiKeySection');
@@ -12,12 +11,14 @@ const textGradApiKeySection = document.getElementById('textGradApiKeySection');
 const textGradApiKeyInput = document.getElementById('textGradApiKey');
 const textGradLoopsSection = document.getElementById('textGradLoopsSection');
 const textGradLoopsInput = document.getElementById('textGradLoops');
-const darkThemeToggle = document.getElementById('darkThemeToggle');
 const systemPrompt = document.getElementById('systemPrompt');
 const textGradSystemPromptSection = document.getElementById('textGradSystemPromptSection');
 const textGradLossPromptSection = document.getElementById('textGradLossPromptSection');
 const textGradLossPrompt = document.getElementById('textGradLossPrompt');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+const downloadSettingsBtn = document.getElementById('downloadSettingsBtn');
+const loadSettingsBtn = document.getElementById('loadSettingsBtn');
+const settingsFileInput = document.getElementById('settingsFileInput');
 const saveStatus = document.getElementById('saveStatus');
 const backToChat = document.getElementById('backToChat');
 const downloadDatasetBtn = document.getElementById('downloadDatasetBtn');
@@ -26,48 +27,7 @@ const datasetVersionSelect = document.getElementById('datasetVersionSelect');
 const BACKEND_URL = 'http://localhost:5050';
 let datasetStatusInterval = null;
 
-const defaultSettings = {
-  model: 'gemma3:4b',
-  systemPrompt: `You are an expert competitive programmer. Given a competitive programming 
-problem, produce a correct and efficient solution.
-
-Your response must follow this exact structure:
-1. APPROACH: Brief explanation of your algorithm and why it's correct
-2. COMPLEXITY: Time and space complexity analysis
-3. CODE: Complete, runnable solution in Python (or C++ if specified)
-
-Requirements:
-- Handle all edge cases explicitly
-- Ensure your solution fits within the given time and memory constraints
-- Output only the final solution code block, no partial attempts
-- Do not include test scaffolding or input parsing beyond what is needed`,
-  darkTheme: true,
-  temperature: 0,
-  benchmark: 'TruthfulQA',
-  includeRag: false,
-  includeTextGrad: true,
-  textGradModel: 'gemma3:4b',
-  textGradLoops: 1,
-  textGradLossPrompt: `You are evaluating a competitive programming solution. Your feedback will 
-be used to improve the prompt that generated this solution.
-
-Evaluate the solution on these criteria:
-1. CORRECTNESS: Does the logic handle all cases including edge cases?
-2. COMPLEXITY: Is the time/space complexity optimal for the constraints?
-3. COMPLETENESS: Is the solution fully implemented and runnable?
-4. CLARITY: Is the approach clearly explained?
-
-For each criterion, state:
-- What the solution did well
-- What specific weakness exists
-- How the PROMPT (not the code) should be changed to elicit a better solution
-
-Focus your feedback on prompt-level issues — e.g. "the prompt should instruct 
-the model to explicitly consider overflow", not "the code has a bug on line 5". 
-The goal is to improve the instruction, not patch the output directly.`,
-  apiKey: '',
-  textGradApiKey: '',
-};
+let defaultSettings = {};
 const MODELS = [
   "gemma3:4b",
   "gpt-oss:120b",
@@ -91,7 +51,8 @@ function loadSettings() {
   const stored = sessionStorage.getItem('fyp_chat_settings');
   if (!stored) return defaultSettings;
   try {
-    return { ...defaultSettings, ...JSON.parse(stored) };
+    const { benchmark, darkTheme, ...savedSettings } = JSON.parse(stored);
+    return { ...defaultSettings, ...savedSettings };
   } catch {
     return defaultSettings;
   }
@@ -101,23 +62,79 @@ function saveSettings(settings) {
   sessionStorage.setItem('fyp_chat_settings', JSON.stringify(settings));
 }
 
+async function fetchDefaultSettings() {
+  const response = await fetch(`${BACKEND_URL}/api/defaults`);
+  if (!response.ok) throw new Error('Unable to load schema defaults.');
+
+  const schemaDefaults = await response.json();
+  defaultSettings = {
+    ...schemaDefaults,
+    // Optional Pydantic API-key defaults are null; form inputs use strings.
+    apiKey: schemaDefaults.apiKey || '',
+    textGradApiKey: schemaDefaults.textGradApiKey || '',
+  };
+}
+
+function getSettingsFromForm() {
+  return {
+    model: modelSelect.value,
+    temperature: parseFloat(temperatureInput.value),
+    includeRag: includeRag.checked,
+    includeTextGrad: includeTextGrad.checked,
+    textGradModel: textGradModelSelect.value,
+    textGradLoops: parseInt(textGradLoopsInput.value, 10) || 1,
+    textGradLossPrompt: textGradLossPrompt.value.trim() || 'Evaluate this answer. It should be factual, clear, and directly answer the question.',
+    systemPrompt: systemPrompt.value,
+    apiKey: apiKeyInput.value.trim(),
+    textGradApiKey: textGradApiKeyInput.value.trim(),
+  };
+}
+
+function validateImportedSettings(settings) {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    throw new Error('The selected file does not contain settings.');
+  }
+
+  const { benchmark, darkTheme, ...currentSettings } = settings;
+  const imported = { ...defaultSettings, ...currentSettings };
+  if (!MODELS.includes(imported.model) || !MODELS.includes(imported.textGradModel)) {
+    throw new Error('The file contains a model that is not available in this version.');
+  }
+  if (!Number.isFinite(Number(imported.temperature)) || Number(imported.temperature) < 0 || Number(imported.temperature) > 1) {
+    throw new Error('The file contains an invalid temperature.');
+  }
+  if (!Number.isInteger(Number(imported.textGradLoops)) || Number(imported.textGradLoops) < 1 || Number(imported.textGradLoops) > 50) {
+    throw new Error('The file contains an invalid TextGrad loop count.');
+  }
+  for (const key of ['includeRag', 'includeTextGrad']) {
+    if (typeof imported[key] !== 'boolean') throw new Error(`The file contains an invalid ${key} value.`);
+  }
+  for (const key of ['systemPrompt', 'textGradLossPrompt', 'apiKey', 'textGradApiKey']) {
+    if (typeof imported[key] !== 'string') throw new Error(`The file contains an invalid ${key} value.`);
+  }
+
+  return {
+    ...imported,
+    temperature: Number(imported.temperature),
+    textGradLoops: Number(imported.textGradLoops),
+  };
+}
+
 function updateSliderValue() {
   temperatureValue.textContent = parseFloat(temperatureInput.value).toFixed(2);
 }
 
 function populateForm(settings) {
-  modelSelect.value = settings.model;
-  benchmarkSelect.value = settings.benchmark;
-  temperatureInput.value = settings.temperature;
+  modelSelect.value = settings.model || MODELS[0];
+  temperatureInput.value = settings.temperature ?? 0;
   updateSliderValue();
   apiKeyInput.value = settings.apiKey || '';
-  includeRag.checked = settings.includeRag;
-  includeTextGrad.checked = settings.includeTextGrad;
+  includeRag.checked = settings.includeRag ?? false;
+  includeTextGrad.checked = settings.includeTextGrad ?? false;
   textGradModelSelect.value = settings.textGradModel || 'gemma3:4b';
   textGradApiKeyInput.value = settings.textGradApiKey || '';
   textGradLoopsInput.value = settings.textGradLoops || 1;
-  darkThemeToggle.checked = settings.darkTheme;
-  systemPrompt.value = settings.systemPrompt;
+  systemPrompt.value = settings.systemPrompt || '';
   textGradLossPrompt.value = settings.textGradLossPrompt || 'Evaluate this answer. It should be factual, clear, and directly answer the question.';
   updateApiKeyVisibility(settings.model);
   updateTextGradApiKeyVisibility(settings.textGradModel, settings.includeTextGrad);
@@ -234,27 +251,57 @@ saveSettingsBtn.addEventListener('click', () => {
     return;
   }
 
-  const newSettings = {
-    model: modelSelect.value,
-    benchmark: benchmarkSelect.value,
-    temperature: parseFloat(temperatureInput.value),
-    includeRag: includeRag.checked,
-    includeTextGrad: includeTextGrad.checked,
-    textGradModel: textGradModelSelect.value,
-    textGradLoops: parseInt(textGradLoopsInput.value, 10) || 1,
-    textGradLossPrompt: textGradLossPrompt.value.trim() || 'Evaluate this answer. It should be factual, clear, and directly answer the question.',
-    darkTheme: darkThemeToggle.checked,
-    systemPrompt: systemPrompt.value,
-    apiKey: apiKeyInput.value.trim(),
-    textGradApiKey: textGradApiKeyInput.value.trim(),
-  };
+  const newSettings = getSettingsFromForm();
   saveSettings(newSettings);
   showStatus('Settings saved locally.');
 });
 
-document.addEventListener("DOMContentLoaded", () => {
+downloadSettingsBtn.addEventListener('click', () => {
+  const exportFile = {
+    format: 'fyp-chat-settings',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    settings: getSettingsFromForm(),
+  };
+  const blob = new Blob([JSON.stringify(exportFile, null, 2)], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `fyp-settings-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(link.href);
+  showStatus('Settings downloaded. Keep the file secure.');
+});
+
+loadSettingsBtn.addEventListener('click', () => settingsFileInput.click());
+
+settingsFileInput.addEventListener('change', async () => {
+  const [file] = settingsFileInput.files;
+  settingsFileInput.value = '';
+  if (!file) return;
+
+  try {
+    const parsed = JSON.parse(await file.text());
+    const importedSettings = validateImportedSettings(
+      parsed?.format === 'fyp-chat-settings' ? parsed.settings : parsed
+    );
+    populateForm(importedSettings);
+    saveSettings(importedSettings);
+    showStatus('Settings loaded and saved locally.');
+  } catch (error) {
+    showStatus(`Could not load settings: ${error.message}`);
+  }
+});
+
+document.addEventListener("DOMContentLoaded", async () => {
   populateSelect("modelSelect");
   populateSelect("textGradModelSelect");
+  try {
+    await fetchDefaultSettings();
+  } catch (error) {
+    showStatus('Could not load defaults from the backend.');
+  }
   const settings = loadSettings();
   populateForm(settings);
   refreshDatasetStatus();

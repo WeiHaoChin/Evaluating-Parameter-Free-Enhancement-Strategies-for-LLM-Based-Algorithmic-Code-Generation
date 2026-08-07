@@ -19,7 +19,7 @@
             <div class="brand-subtitle">Settings</div>
           </div>
         </div>
-        <button id="backToChat" class="new-chat-btn">← Back to chat</button>
+        <button id="backToChat" class="new-chat-btn">â† Back to chat</button>
         <nav class="sidebar-menu">
           <a class="sidebar-item" href="index.html">Home</a>
           <a class="sidebar-item" href="examples.html">Examples</a>
@@ -32,7 +32,7 @@
         <header class="topbar">
           <div>
             <h1>Settings</h1>
-            <p>Configure your AI model, benchmark, temperature, and evaluation options.</p>
+            <p>Configure your AI model, temperature, and evaluation options.</p>
           </div>
         </header>
 
@@ -47,16 +47,6 @@
             <label for="apiKey">API key</label>
             <input type="password" id="apiKey" placeholder="Enter API key for selected model" />
             <p class="field-note">Required when using remote models like gemma3 or gpt-oss.</p>
-          </div>
-
-          <div class="settings-section">
-            <label for="benchmarkSelect">Benchmark model</label>
-            <select id="benchmarkSelect">
-              <option value="TruthfulQA">TruthfulQA</option>
-              <option value="ARC">ARC</option>
-              <option value="HellaSwag">HellaSwag</option>
-              <option value="MMLU">MMLU</option>
-            </select>
           </div>
 
           <div class="settings-section dataset-section">
@@ -133,18 +123,13 @@
             <p class="field-note">The evaluation criteria used by TextGrad to optimize the prompt.</p>
           </div>
 
-          <div class="settings-section switch-row">
-            <div>
-              <span>Dark theme</span>
-              <small>Match the chat UI theme.</small>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="darkThemeToggle" />
-              <span class="slider"></span>
-            </label>
+          <div class="settings-actions">
+            <button id="saveSettingsBtn" class="primary-button" type="button">Save settings</button>
+            <button id="downloadSettingsBtn" class="secondary-button" type="button">Download settings</button>
+            <button id="loadSettingsBtn" class="secondary-button" type="button">Load settings</button>
+            <input id="settingsFileInput" type="file" accept="application/json,.json" hidden />
           </div>
-
-          <button id="saveSettingsBtn" class="primary-button">Save settings</button>
+          <p class="field-note">Downloaded settings files include API keys. Keep them in a private, secure location.</p>
           <p id="saveStatus" class="save-status"></p>
         </div>
       </main>
