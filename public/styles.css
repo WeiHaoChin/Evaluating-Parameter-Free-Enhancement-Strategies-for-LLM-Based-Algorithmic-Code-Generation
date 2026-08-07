@@ -29,6 +29,32 @@ select {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   min-height: 100vh;
+  animation: page-enter 180ms ease-out both;
+  transition: opacity 180ms ease-in, transform 180ms ease-in;
+}
+
+body.page-leaving .app-shell {
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell {
+    animation: none;
+    transition: none;
+  }
 }
 
 .sidebar {

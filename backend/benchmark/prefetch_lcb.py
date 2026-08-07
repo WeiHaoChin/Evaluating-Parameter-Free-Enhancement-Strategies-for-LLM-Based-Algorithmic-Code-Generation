@@ -22,13 +22,28 @@ HF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("HF_HOME", str(HF_CACHE_DIR))
 os.environ.setdefault("HF_DATASETS_CACHE", str(HF_CACHE_DIR))
 
-from datasets import load_dataset  # noqa: E402
+from datasets import DownloadConfig, load_dataset  # noqa: E402
 
 
 def prefetch(version: str = "release_v5") -> None:
     print(f"[fetch] downloading {version} into {HF_CACHE_DIR} ...")
     load_dataset("livecodebench/code_generation_lite", version, trust_remote_code=True)
     print(f"[done] {version} cached at {HF_CACHE_DIR}")
+
+
+def is_prefetched(version: str = "release_v5") -> bool:
+    """Check whether a dataset version loads from the local cache only."""
+    try:
+        load_dataset(
+            "livecodebench/code_generation_lite",
+            version,
+            split="test",
+            trust_remote_code=True,
+            download_config=DownloadConfig(local_files_only=True),
+        )
+    except Exception:
+        return False
+    return True
 
 
 if __name__ == "__main__":

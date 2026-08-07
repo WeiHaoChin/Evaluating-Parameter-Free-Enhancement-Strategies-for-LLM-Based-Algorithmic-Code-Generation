@@ -20,6 +20,11 @@ const textGradLossPrompt = document.getElementById('textGradLossPrompt');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const saveStatus = document.getElementById('saveStatus');
 const backToChat = document.getElementById('backToChat');
+const downloadDatasetBtn = document.getElementById('downloadDatasetBtn');
+const datasetStatus = document.getElementById('datasetStatus');
+const datasetVersionSelect = document.getElementById('datasetVersionSelect');
+const BACKEND_URL = 'http://localhost:5050';
+let datasetStatusInterval = null;
 
 const defaultSettings = {
   model: 'gemma3:4b',
@@ -164,6 +169,53 @@ function updateTextGradVisibility(enabled) {
   textGradLoopsInput.required = enabled;
 }
 
+async function refreshDatasetStatus() {
+  const version = datasetVersionSelect.value;
+  try {
+    const response = await fetch(`${BACKEND_URL}/benchmark/dataset/status?version=${encodeURIComponent(version)}`);
+    if (!response.ok) throw new Error('Unable to check dataset status');
+    const status = await response.json();
+    if (status.available) {
+      datasetStatus.textContent = 'Downloaded and ready for benchmarks.';
+      downloadDatasetBtn.disabled = true;
+      downloadDatasetBtn.textContent = 'Dataset downloaded';
+      clearInterval(datasetStatusInterval);
+    } else if (status.downloading) {
+      datasetStatus.textContent = 'Downloading from Hugging Face. This may take a few minutes...';
+      downloadDatasetBtn.disabled = true;
+      downloadDatasetBtn.textContent = 'Downloading...';
+    } else {
+      datasetStatus.textContent = status.error
+        ? `Download failed: ${status.error}`
+        : 'Not downloaded. Download it before running a benchmark.';
+      downloadDatasetBtn.disabled = false;
+      downloadDatasetBtn.textContent = 'Download dataset';
+    }
+  } catch (error) {
+    datasetStatus.textContent = 'Dataset status unavailable. Is the backend running?';
+    downloadDatasetBtn.disabled = true;
+  }
+}
+
+downloadDatasetBtn.addEventListener('click', async () => {
+  downloadDatasetBtn.disabled = true;
+  downloadDatasetBtn.textContent = 'Starting download...';
+  try {
+    const version = datasetVersionSelect.value;
+    const response = await fetch(`${BACKEND_URL}/benchmark/dataset/download?version=${encodeURIComponent(version)}`, { method: 'POST' });
+    if (!response.ok) throw new Error('Could not start the download');
+    await refreshDatasetStatus();
+    clearInterval(datasetStatusInterval);
+    datasetStatusInterval = setInterval(refreshDatasetStatus, 2000);
+  } catch (error) {
+    datasetStatus.textContent = error.message;
+    downloadDatasetBtn.disabled = false;
+    downloadDatasetBtn.textContent = 'Download dataset';
+  }
+});
+
+datasetVersionSelect.addEventListener('change', refreshDatasetStatus);
+
 temperatureInput.addEventListener('input', updateSliderValue);
 modelSelect.addEventListener('change', () => updateApiKeyVisibility(modelSelect.value));
 textGradModelSelect.addEventListener('change', () => updateTextGradApiKeyVisibility(textGradModelSelect.value, includeTextGrad.checked));
@@ -205,11 +257,12 @@ document.addEventListener("DOMContentLoaded", () => {
   populateSelect("textGradModelSelect");
   const settings = loadSettings();
   populateForm(settings);
+  refreshDatasetStatus();
   // ... rest of your existing DOMContentLoaded code
 });
 
 if (backToChat) {
   backToChat.addEventListener('click', () => {
-    window.location.href = 'index.html';
+    window.navigateWithTransition('index.html');
   });
 }

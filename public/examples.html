@@ -177,6 +177,7 @@
       </main>
     </div>
 
+    <script src="page-transitions.js"></script>
     <script>
       function loadSavedConversations() {
         const stored = localStorage.getItem('fyp_saved_conversations');
@@ -251,7 +252,7 @@
           localStorage.setItem('fyp_current_chat', JSON.stringify(conversation.messages));
           sessionStorage.setItem('fyp_chat_settings', JSON.stringify(conversation.settings));
           sessionStorage.setItem('fyp_loaded_from_examples', 'true'); // Flag to load the conversation
-          window.location.href = 'index.html';
+          window.navigateWithTransition('index.html');
         }
       }
 

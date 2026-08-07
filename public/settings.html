@@ -59,6 +59,19 @@
             </select>
           </div>
 
+          <div class="settings-section dataset-section">
+            <div>
+              <label>LiveCodeBench dataset</label>
+              <p id="datasetStatus" class="field-note">Checking dataset availability...</p>
+            </div>
+            <select id="datasetVersionSelect" aria-label="LiveCodeBench dataset version">
+              <option value="release_v5">release_v5</option>
+              <option value="release_v4">release_v4</option>
+            </select>
+            <button id="downloadDatasetBtn" class="primary-button" type="button">Download dataset</button>
+            <p class="field-note">Downloads the selected version from Hugging Face. Benchmarks remain unavailable until the download completes.</p>
+          </div>
+
           <div class="settings-section">
             <label for="temperature">Temperature</label>
             <div class="range-row">
@@ -137,6 +150,7 @@
       </main>
     </div>
 
+    <script src="page-transitions.js"></script>
     <script src="settings.js"></script>
   </body>
 </html>

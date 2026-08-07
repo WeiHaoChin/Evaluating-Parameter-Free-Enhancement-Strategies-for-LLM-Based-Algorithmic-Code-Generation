@@ -636,7 +636,7 @@ if (settingsButton) {
   settingsButton.addEventListener('click', () => {
     // Save the current chat window HTML before navigating away
     localStorage.setItem('fyp_chat_html', chatWindow.innerHTML);
-    window.location.href = 'settings.html';
+    window.navigateWithTransition('settings.html');
   });
 }
 

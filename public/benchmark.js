@@ -33,10 +33,12 @@ let benchmarkStartTime = null;
 let statusCheckInterval = null;
 let currentResults = null;
 let defaultSettings = null;
+let datasetAvailable = false;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   await fetchDefaultSettings();
+  await refreshDatasetAvailability();
   checkBackendStatus();
   setupEventListeners();
   linkSliderAndInput();
@@ -52,6 +54,26 @@ function setupEventListeners() {
   historyModal.addEventListener('click', (e) => {
     if (e.target === historyModal) closeResultsHistory();
   });
+  versionSelect.addEventListener('change', refreshDatasetAvailability);
+}
+
+async function refreshDatasetAvailability() {
+  const version = versionSelect.value;
+  try {
+    const response = await fetch(`${BACKEND_URL}/benchmark/dataset/status?version=${encodeURIComponent(version)}`);
+    if (!response.ok) throw new Error('Unable to check dataset');
+    const status = await response.json();
+    datasetAvailable = status.available;
+    startBenchmarkBtn.disabled = !datasetAvailable;
+    startBenchmarkBtn.title = datasetAvailable ? '' : 'Download this dataset from Settings before running a benchmark.';
+    startBenchmarkBtn.textContent = datasetAvailable
+      ? 'Start Benchmark'
+      : (status.downloading ? 'Dataset downloading...' : 'Download dataset in Settings');
+  } catch (error) {
+    datasetAvailable = false;
+    startBenchmarkBtn.disabled = true;
+    startBenchmarkBtn.textContent = 'Dataset status unavailable';
+  }
 }
 
 function linkSliderAndInput() {
@@ -109,6 +131,11 @@ async function checkBackendStatus() {
 async function startBenchmark() {
   if (benchmarkRunning) {
     showAlert('Benchmark is already running', 'warning');
+    return;
+  }
+
+  if (!datasetAvailable) {
+    showAlert('Download the selected LiveCodeBench dataset from Settings before running a benchmark.', 'warning');
     return;
   }
 
