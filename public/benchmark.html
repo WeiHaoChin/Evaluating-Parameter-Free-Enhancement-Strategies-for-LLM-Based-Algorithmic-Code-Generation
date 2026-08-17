@@ -40,6 +40,17 @@
           <!-- Configuration Panel -->
           <div class="config-panel">
             <h2>Benchmark Configuration</h2>
+            <div id="benchmarkReadiness" class="benchmark-readiness" aria-live="polite">
+              <div class="readiness-heading">
+                <div>
+                  <span class="readiness-eyebrow">Benchmark readiness</span>
+                  <h3 id="readinessTitle">Checking setup...</h3>
+                </div>
+                <span id="readinessCount" class="readiness-count">0 / 4</span>
+              </div>
+              <div id="readinessChecks" class="readiness-checks"></div>
+              <a class="readiness-settings-link" href="settings.html">Open Settings to complete setup</a>
+            </div>
             <div class="config-grid">
               <div class="config-field">
                 <label for="versionSelect">Dataset Version:</label>

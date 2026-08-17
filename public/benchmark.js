@@ -34,11 +34,13 @@ let statusCheckInterval = null;
 let currentResults = null;
 let defaultSettings = null;
 let datasetAvailable = false;
+let benchmarkReady = false;
+let readiness = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   await fetchDefaultSettings();
-  await refreshDatasetAvailability();
+  await refreshBenchmarkReadiness();
   checkBackendStatus();
   setupEventListeners();
   linkSliderAndInput();
@@ -54,25 +56,63 @@ function setupEventListeners() {
   historyModal.addEventListener('click', (e) => {
     if (e.target === historyModal) closeResultsHistory();
   });
-  versionSelect.addEventListener('change', refreshDatasetAvailability);
+  versionSelect.addEventListener('change', refreshBenchmarkReadiness);
+  window.addEventListener('focus', refreshBenchmarkReadiness);
 }
 
-async function refreshDatasetAvailability() {
+function renderReadiness(data) {
+  const title = document.getElementById('readinessTitle');
+  const count = document.getElementById('readinessCount');
+  const checksContainer = document.getElementById('readinessChecks');
+  const checks = Object.values(data.checks || {});
+  const complete = checks.filter((check) => check.ready).length;
+
+  title.textContent = data.ready ? 'Ready to run benchmark' : 'Complete setup before running';
+  count.textContent = `${complete} / ${checks.length}`;
+  count.classList.toggle('ready', data.ready);
+  checksContainer.innerHTML = checks.map((check) => `
+    <div class="readiness-check ${check.ready ? 'is-ready' : 'is-missing'}">
+      <span class="readiness-icon" aria-hidden="true">${check.ready ? '&check;' : '!'}</span>
+      <div><strong>${check.label}</strong><small>${check.ready ? 'Configured' : check.detail}</small></div>
+    </div>
+  `).join('');
+}
+
+function updateStartButton() {
+  const canStart = datasetAvailable && benchmarkReady && !benchmarkRunning;
+  startBenchmarkBtn.disabled = !canStart;
+  if (canStart) {
+    startBenchmarkBtn.textContent = 'Start Benchmark';
+    startBenchmarkBtn.title = '';
+  } else if (!datasetAvailable) {
+    startBenchmarkBtn.textContent = 'Download dataset in Settings';
+    startBenchmarkBtn.title = 'Download this dataset from Settings before running a benchmark.';
+  } else {
+    startBenchmarkBtn.textContent = 'Complete benchmark setup';
+    startBenchmarkBtn.title = 'Configure RAG, the initial LLM, and TextGrad in Settings before running a benchmark.';
+  }
+}
+
+async function refreshBenchmarkReadiness() {
   const version = versionSelect.value;
   try {
-    const response = await fetch(`${BACKEND_URL}/benchmark/dataset/status?version=${encodeURIComponent(version)}`);
-    if (!response.ok) throw new Error('Unable to check dataset');
-    const status = await response.json();
-    datasetAvailable = status.available;
-    startBenchmarkBtn.disabled = !datasetAvailable;
-    startBenchmarkBtn.title = datasetAvailable ? '' : 'Download this dataset from Settings before running a benchmark.';
-    startBenchmarkBtn.textContent = datasetAvailable
-      ? 'Start Benchmark'
-      : (status.downloading ? 'Dataset downloading...' : 'Download dataset in Settings');
+    const response = await fetch(`${BACKEND_URL}/benchmark/readiness`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version, settings: loadSavedSettings() }),
+    });
+    if (!response.ok) throw new Error('Unable to check benchmark setup');
+    readiness = await response.json();
+    datasetAvailable = readiness.checks.dataset.ready;
+    benchmarkReady = readiness.ready;
+    renderReadiness(readiness);
+    updateStartButton();
   } catch (error) {
     datasetAvailable = false;
+    benchmarkReady = false;
     startBenchmarkBtn.disabled = true;
-    startBenchmarkBtn.textContent = 'Dataset status unavailable';
+    startBenchmarkBtn.textContent = 'Setup status unavailable';
+    document.getElementById('readinessTitle').textContent = 'Unable to check setup';
   }
 }
 
@@ -139,6 +179,11 @@ async function startBenchmark() {
     return;
   }
 
+  if (!benchmarkReady) {
+    showAlert('Complete the RAG and API-key requirements shown above before running a benchmark.', 'warning');
+    return;
+  }
+
   const n = parseInt(problemCount.value) || 10;
   const version = versionSelect.value;
   const difficulty = difficultySelect.value || null;
@@ -183,8 +228,7 @@ async function startBenchmark() {
     pollBenchmarkStatus();
   } catch (error) {
     showAlert(`Error starting benchmark: ${error.message}`, 'error');
-    startBenchmarkBtn.disabled = false;
-    startBenchmarkBtn.textContent = 'Start Benchmark';
+    await refreshBenchmarkReadiness();
   }
 }
 
@@ -261,7 +305,7 @@ async function loadResults() {
     statusPanel.style.display = 'none';
     resultsPanel.style.display = 'block';
     configPanel.style.display = 'block';
-    startBenchmarkBtn.disabled = false;
+    await refreshBenchmarkReadiness();
 
     showAlert('Benchmark completed successfully!', 'success');
   } catch (error) {

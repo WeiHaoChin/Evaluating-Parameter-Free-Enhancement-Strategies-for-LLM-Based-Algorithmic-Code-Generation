@@ -6,6 +6,7 @@ from benchmark.runner import run_benchmark, get_status, request_stop
 from benchmark.logger import save_results, load_latest_results, load_all_results
 from benchmark.prefetch_lcb import is_prefetched, prefetch
 from schemas import Settings, BenchmarkRequest
+from rag_handler import is_rag_available
 
 router = APIRouter(prefix="/benchmark", tags=["benchmark"])
 
@@ -41,6 +42,46 @@ async def get_dataset_status(version: str = "release_v5") -> dict:
     return dataset_status(version)
 
 
+def benchmark_readiness(settings: Settings, version: str) -> dict:
+    """Return the prerequisites needed for a meaningful full-pipeline run."""
+    def api_key_ready(model: str, api_key: str | None) -> bool:
+        """Keep benchmark validation in step with Settings' API-key behaviour."""
+        return bool(model and (model == "mock-chat:1.0" or (api_key and api_key.strip())))
+
+    checks = {
+        "dataset": {
+            "ready": is_prefetched(version),
+            "label": "LiveCodeBench dataset",
+            "detail": "Download the selected dataset from Settings.",
+        },
+        "rag": {
+            "ready": settings.includeRag and is_rag_available(),
+            "label": "RAG knowledge base",
+            "detail": "Enable RAG in Settings and make sure the knowledge base is available.",
+        },
+        "llm_api": {
+            "ready": api_key_ready(settings.model, settings.apiKey),
+            "label": "Initial LLM model & API key",
+            "detail": "Select an initial LLM and add its API key in Settings.",
+        },
+        "textgrad_api": {
+            "ready": bool(
+                settings.includeTextGrad
+                and settings.textGradModel
+                and api_key_ready(settings.textGradModel, settings.textGradApiKey)
+            ),
+            "label": "TextGrad model & API key",
+            "detail": "Enable TextGrad, select its model, and add its API key in Settings.",
+        },
+    }
+    return {"ready": all(check["ready"] for check in checks.values()), "checks": checks}
+
+
+@router.post("/readiness")
+async def get_benchmark_readiness(request: BenchmarkRequest) -> dict:
+    return benchmark_readiness(request.settings or Settings(), request.version)
+
+
 @router.post("/dataset/download")
 async def download_dataset(version: str = "release_v5") -> dict:
     if _download_status["running"] or is_prefetched(version):
@@ -64,6 +105,13 @@ async def start_benchmark(
             status_code=409,
             detail=(f"LiveCodeBench {request.version} has not been downloaded. "
                     "Download it from Settings before starting a benchmark."),
+        )
+    readiness = benchmark_readiness(request.settings or Settings(), request.version)
+    if not readiness["ready"]:
+        missing = [check["label"] for check in readiness["checks"].values() if not check["ready"]]
+        raise HTTPException(
+            status_code=422,
+            detail=f"Benchmark setup is incomplete: {', '.join(missing)}.",
         )
     # print(f"Starting benchmark with version={request.version}, n={request.n}, difficulty={request.difficulty}, settings={request.settings.dict()}")
     async def run_and_save() -> None:

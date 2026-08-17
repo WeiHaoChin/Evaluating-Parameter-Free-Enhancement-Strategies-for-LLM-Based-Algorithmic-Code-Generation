@@ -28,12 +28,15 @@ class GoogleGenerativeAI:
     def __call__(self, prompt, system_prompt=None, **kwargs):
         # For Google models, system_prompt is usually part of the prompt in a multi-turn conversation
         # or set as a safety setting. Here, we'll prepend it to the prompt if provided.
-        full_prompt = f"{system_prompt}\n{prompt}" if system_prompt else str(prompt)
-        
+        # full_prompt = f"{system_prompt}\n{prompt}" if system_prompt else str(prompt)
+        config = genai.types.GenerateContentConfig(
+            temperature=self.temperature,
+            system_instruction=system_prompt if system_prompt else None,
+        )
         # Retry logic with exponential backoff
         for attempt in range(self.max_retries):
             try:
-                response = self.client.models.generate_content(model=self.model, contents=full_prompt, config={genai.types.GenerationConfig(temperature=self.temperature)})
+                response = self.client.models.generate_content(model=self.model, contents=str(prompt), config=config)
                 return response.text
             except Exception as e:
                 error_str = str(e)

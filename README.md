@@ -1,229 +1,267 @@
-# FYP: Chat UI + RAG Pipeline
+# FYP: Competitive Programming LLM Evaluation Platform
 
-A comprehensive competitive programming platform with a ChatGPT-style UI and a RAG (Retrieval-Augmented Generation) pipeline for building high-quality knowledge bases.
+This project combines a browser-based evaluation UI with a retrieval-augmented generation (RAG) pipeline for competitive programming data. It supports interactive prompting, optional TextGrad refinement, benchmarking against LiveCodeBench, and retrieval over a CP knowledge base built from public problem and editorial sources.
 
-## Project Overview
+## Overview
 
-This project has two main components:
+The codebase has four main parts:
 
-1. **Chat UI** - A web-based ChatGPT-style interface powered by Python/FastAPI backend
-2. **RAG Pipeline** - A scraping and indexing system for competitive programming knowledge
+1. Frontend UI in `public/` for chatting, settings, and benchmark pages
+2. FastAPI backend in `backend/` that serves the UI and provides API/WebSocket endpoints
+3. RAG pipeline in `backend/RAG/` that scrapes, chunks, embeds, and indexes competitive programming content
+4. Benchmark harness in `backend/benchmark/` and `backend/lcb_runner/` for evaluation runs
 
-## 📚 RAG Pipeline: CP Knowledge Base
+## Architecture
 
-A scraping and RAG pipeline for building a high-quality competitive programming knowledge base to improve LLM performance on algorithmic tasks.
+- `public/` contains the static HTML/JS UI
+- `backend/main.py` is the main FastAPI app and service entry point
+- `backend/solver.py` contains the main CP solving pipeline and prompt construction
+- `backend/TextGrad.py` wraps TextGrad and LLM clients for iterative refinement
+- `backend/rag_handler.py` exposes ChromaDB queries used by the app
+- `backend/routes/benchmark.py` adds benchmark API endpoints
+- `backend/RAG/main.py` builds the knowledge base from multiple sources
+- `backend/benchmark/runner.py` runs benchmark jobs and tracks execution status
 
-### Data Sources
+## Project Structure
 
-| Source | What we scrape | Volume | Quality |
-|--------|---------------|--------|---------|
-| **Codeforces** | Problems + editorials + tags + ratings | ~500 problems | ⭐⭐⭐⭐ |
-| **USACO** | Problems + USACO.guide editorials | ~200 problems | ⭐⭐⭐⭐⭐ |
-| **AtCoder** | ABC/ARC/AGC problems + official editorials | ~300 problems | ⭐⭐⭐⭐ |
-| **CP-Algorithms** | Full algorithm reference (180+ articles) | ~180 articles | ⭐⭐⭐⭐⭐ |
-| **CPH Book** | 30 structured chapters, CC BY-NC-SA 4.0 | 30 chapters | ⭐⭐⭐⭐⭐ |
-
-### RAG Quick Start
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run everything (scrape all sources + build RAG chunks as JSONL)
-python main.py
-
-# Specific sources only
-python main.py --sources codeforces,cp_algorithms
-
-# Ingest into ChromaDB (local vector store)
-python main.py --vector-db chroma
-
-# Only re-chunk already-scraped data (no network requests)
-python main.py --pipeline-only
-```
-
-### RAG Project Structure
-
-```
+```text
 FYP/
-├── main.py                    # Orchestrator — runs scrapers + pipeline
-├── requirements.txt           # All dependencies
-├── backend.py                 # FastAPI backend for Chat UI
-├── server.js                  # Node.js server (alternative)
-├── public/                    # Frontend (JavaScript + HTML)
+├── Dockerfile
+├── docker-compose.yaml
+├── requirements.txt
+├── package.json
+├── server.js
+├── .env
+├── public/
+│   ├── app.js
+│   ├── benchmark.html
+│   ├── benchmark.js
+│   ├── examples.html
 │   ├── index.html
+│   ├── new-chat.html
+│   ├── page-transitions.js
 │   ├── settings.html
-│   └── ...
-├── RAG/
-│   ├── rag_pipeline.py        # Chunking + embedding + vector DB ingestion
-│   ├── scrapers/
-│   │   ├── codeforces.py      # CF API + HTML scraping
-│   │   ├── usaco.py           # USACO.org + USACO.guide editorials
-│   │   ├── atcoder.py         # AtCoder via kenkoooo API
-│   │   ├── cp_algorithms.py   # CP-algorithms.com full crawl
-│   │   └── cph_book.py        # CPH LaTeX source + PDF download
-│   └── data/                  # Created at runtime
-│       ├── codeforces/        # Raw JSON per problem
-│       ├── usaco/
-│       ├── atcoder/
-│       ├── cp_algorithms/
-│       ├── cph/
-│       └── rag_chunks/
-│           ├── chunks.jsonl   # All chunks, portable format
-│           ├── stats.json     # Chunk statistics
-│           └── chroma_db/     # ChromaDB files (if --vector-db chroma)
-└── logs/                      # Pipeline execution logs
+│   ├── settings.js
+│   ├── styles.css
+│   └── Dockerfile
+├── backend/
+│   ├── main.py
+│   ├── schemas.py
+│   ├── solver.py
+│   ├── TextGrad.py
+│   ├── llm_clients.py
+│   ├── rag_handler.py
+│   ├── data/
+│   │   ├── hf_cache/
+│   │   └── rag_chunks/
+│   ├── benchmark/
+│   │   ├── fetch_lcb.py
+│   │   ├── logger.py
+│   │   ├── metrics.py
+│   │   ├── prefetch_lcb.py
+│   │   └── runner.py
+│   ├── lcb_runner/
+│   │   ├── benchmarks/
+│   │   ├── evaluation/
+│   │   └── utils/
+│   ├── routes/
+│   │   └── benchmark.py
+│   └── RAG/
+│       ├── main.py
+│       ├── pipeline/
+│       ├── scrapers/
+│       └── ...
+├── logs/
+└── README.md
 ```
 
-### Chunk Format
+## Features
 
-Each chunk in `chunks.jsonl`:
+- Chat UI for competitive-programming prompts and responses
+- Optional RAG augmentation using a local ChromaDB knowledge base
+- TextGrad support for iterative prompt refinement
+- LLM model selection and settings panel in the browser
+- LiveCodeBench-style benchmark orchestration and result tracking
+- Local and cloud-compatible model backends (Ollama and Gemini/Gemini-style APIs in this codebase)
+- Docker setup for frontend + backend + ChromaDB services
 
-```json
-{
-  "chunk_id": "uuid",
-  "source_id": "1234A",
-  "source": "codeforces",
-  "chunk_type": "editorial",
-  "title": "CF 1234A Editorial (part 1)",
-  "text": "The key insight is...",
-  "metadata": {
-    "problem_id": "1234A",
-    "rating": 1800,
-    "tags": ["dp", "graphs"],
-    "editorial_url": "..."
-  },
-  "token_estimate": 312
-}
-```
+## Quick Start
 
-### Chunking Strategy
+### Recommended: run everything with Docker
 
-- **Problems**: Statement split by paragraphs (~400 tokens), examples kept together
-- **Editorials**: Semantic paragraphs (~512 tokens) with 64-token overlap
-- **Theory articles**: Paragraph chunks (~600 tokens), code blocks as separate chunks
-- **Book chapters**: ~700 token chunks preserving section boundaries
+This is the simplest way to run the app without manually installing all Python dependencies.
 
-### Vector Database Options
-
-#### JSONL (default — no setup needed)
-Raw output. Compatible with any downstream tool.
-
-#### ChromaDB (local, easiest)
-```bash
-pip install chromadb openai
-export OPENAI_API_KEY=sk-...
-python main.py --vector-db chroma
-```
-
----
-
-## 💬 Chat UI
-
-A ChatGPT-style web interface for interacting with the RAG pipeline or standalone LLMs.
-
-### Chat UI Quick Start
-
-#### Option 1: Run with Python Backend
-1. Install Python 3.11+ and create a virtual environment
-2. Open a terminal in `d:\Github\FYP`
-3. Install dependencies:
-   ```bash
-   python -m pip install -r requirements.txt
-   ```
-4. Run the backend server:
-   ```bash
-   python backend.py
-   ```
-5. Open `http://127.0.0.1:8000` in your browser
-
-#### Option 2: Static Preview Only
-Open `public/index.html` directly in your browser for a static demo without a backend.
-
-### Chat UI Features
-
-- **Settings panel** - Configure:
-  - Model selection (defaults to `mock-chat:1.0`)
-  - API keys for external models
-  - TextGrad loop count (when enabled)
-- **Mock chat mode** - Test the UI without API keys
-- **RAG integration** - Connect to vector databases for contextual responses
-- **TextGrad support** - Optional gradient-based LLM optimization
-
-### Backend Details
-
-- The Python backend serves the frontend from `public/` directory
-- REST API exposed at `/api/chat`
-- Environment variables configurable via `.env` file
-- Supports both local (Ollama) and remote (OpenAI, etc.) LLM backends
-
----
-
-## 🔧 Configuration
-
-### Environment Variables (.env)
+From the repository root:
 
 ```bash
-# LLM Configuration
-LLM_MODEL=gpt-4                    # Default LLM model
-OPENAI_API_KEY=sk-...             # OpenAI API key (if using OpenAI models)
-
-# Vector Database
-VECTOR_DB=chroma                   # Options: chroma, qdrant, jsonl
-CHROMA_HOST=localhost             # ChromaDB server (if remote)
-CHROMA_PORT=8000
-
-# Scraping
-CODEFORCES_API_TIMEOUT=30
-USACO_API_TIMEOUT=30
-
-# Server
-SERVER_PORT=8000
-SERVER_HOST=127.0.0.1
+docker compose up --build
 ```
 
----
+This starts:
 
-## 📦 Dependencies
+- frontend: http://localhost:3000
+- backend API: http://localhost:5050/docs
+- ChromaDB: http://localhost:8000
 
-All dependencies are organized in a single `requirements.txt` file, grouped by functionality:
+The app runs through the FastAPI backend and serves the static frontend from `public/`.
 
-- **Core Web Framework**: FastAPI, Uvicorn
-- **HTTP & Networking**: httpx, requests, beautifulsoup4
-- **Data Processing**: pandas, numpy, pyarrow, datasets
-- **LLM & Text Processing**: openai, ollama, textgrad, tiktoken
-- **Vector Databases**: chromadb, qdrant-client
-- **PDF & File Handling**: pillow, diskcache, fsspec
-- **Development & Testing**: pytest, pytest-asyncio
-- **And more...**
+### Alternative: run locally with Python
 
-Install all dependencies:
+If you want to work on the backend directly, install Python dependencies first:
+
 ```bash
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
----
+Then start the backend:
 
-## 📝 Notes
+```bash
+uvicorn backend.main:app --host 127.0.0.1 --port 5500 --reload
+```
 
-- The Chat UI includes a `TextGrad loop count` setting that is passed to the backend when TextGrad is enabled
-- If you choose a model other than `mock-chat:1.0`, you must provide appropriate API credentials
-- RAG pipeline logs are saved in `logs/` directory with timestamps
-- Vector database files are stored in `RAG/data/rag_chunks/` for persistence
-- The project supports both local LLM inference (via Ollama) and cloud-based APIs
+Open the app at:
 
----
+- http://127.0.0.1:5500/
 
-## 🚀 Getting Started
+### Optional: lightweight Node compatibility server
 
-1. Clone/setup the repository
-2. Install dependencies: `pip install -r requirements.txt`
-3. For Chat UI only: `python backend.py` then open http://127.0.0.1:8000
-4. For RAG pipeline: `python main.py` to start scraping and building the knowledge base
-5. Configure API keys in settings panel (Chat UI) or `.env` file (backend)
+This project includes a simple Express wrapper, but it is not the main app backend:
 
----
+```bash
+npm install
+npm start
+```
 
-## 📄 License
+It serves the frontend on port 3000 and points to the Python backend on port 5500.
 
-The CPH Book content is provided under CC BY-NC-SA 4.0 license. All other code and content follow the repository's license.
+## Docker
+
+The repository includes a Docker Compose stack for the full application:
+
+```bash
+docker compose up --build
+```
+
+This starts:
+
+- frontend container on port 3000
+- backend container on port 5050
+- ChromaDB container on port 8000
+
+The backend image runs:
+
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port 5050
+```
+
+## API Endpoints
+
+The backend exposes the following main endpoints:
+
+- `POST /api/chat` — single-turn chat request
+- `GET /api/status` — backend health check
+- `GET /api/defaults` — default model/settings payload
+- `WebSocket /ws/chat` — streaming chat responses
+- `GET /benchmark/status` and `/benchmark/results` — benchmark status and saved results
+- `POST /benchmark/run` — start a benchmark run
+
+## RAG Data Pipeline
+
+The RAG engine is built in `backend/RAG/` and creates the knowledge base by scraping and processing competitive programming material from public sources before indexing it in ChromaDB.
+
+### Where the RAG data comes from
+
+The dataset is built from the following public competitive-programming sources:
+
+| Source | What is scraped | Volume | Quality |
+|--------|-----------------|--------|---------|
+| **Codeforces** | Problems, editorials, tags, and ratings | ~500 problems | ⭐⭐⭐⭐ |
+| **USACO** | Problems and USACO Guide editorial content | ~200 problems | ⭐⭐⭐⭐⭐ |
+| **AtCoder** | ABC/ARC/AGC problems and official editorials | ~300 problems | ⭐⭐⭐⭐ |
+| **CP-Algorithms** | Full algorithm reference articles | ~180 articles | ⭐⭐⭐⭐⭐ |
+| **CPH Book** | Structured chapters and theory explanations | 30 chapters | ⭐⭐⭐⭐⭐ |
+
+These sources are scraped, chunked, and embedded before being stored in ChromaDB for retrieval during chat and benchmark runs.
+
+### Supported sources
+
+- Codeforces
+- USACO
+- AtCoder
+- CP-Algorithms
+- CPH Book
+
+### Build the knowledge base
+
+From the project root:
+
+```bash
+python -m backend.RAG.main
+```
+
+Subset a source list:
+
+```bash
+python -m backend.RAG.main --sources codeforces,cp_algorithms --vector-db chroma
+```
+
+Rebuild the vectorized chunks without re-scraping:
+
+```bash
+python -m backend.RAG.main --pipeline-only --embedder local --vector-db chroma
+```
+
+### RAG behavior
+
+The backend initializes ChromaDB during startup via `backend/rag_handler.py`. If the database is missing, the app logs a warning and continues without RAG augmentation. This is intentional; the database should be generated first by running the RAG pipeline.
+
+## Benchmarking
+
+The benchmark routes are wired through `backend/routes/benchmark.py` and call the benchmark runner in `backend/benchmark/runner.py`.
+
+Typical flow:
+
+1. Download LiveCodeBench dataset via the UI or the benchmark route
+2. Ensure the model/API settings are valid
+3. Start a run from the benchmark page or API call
+4. Review saved results in the benchmark UI or JSON files under the result directory
+
+The monitoring flow is designed around a background task and a status endpoint so the UI can poll benchmark progress.
+
+## Configuration
+
+The app reads settings from the Pydantic model in `backend/schemas.py`, and the runtime can also use environment variables such as:
+
+```bash
+GOOGLE_API_KEY=...
+OPENAI_API_KEY=...
+QDRANT_API_KEY=...
+OLLAMA_API_KEY=...
+```
+
+The app uses these values for model access and embedding pipelines depending on the selected configuration.
+
+## Notes
+
+- The primary backend entry point is `backend.main:app`, not a root-level `backend.py` file.
+- `public/` is mounted as the static site by FastAPI; the browser UI interacts with the backend API.
+- `server.js` is only a lightweight compatibility wrapper and is not the core application.
+- RAG persistence is stored under `backend/data/rag_chunks/`.
+- Benchmark results and logs are stored in the project logs/result folders.
+
+## Development Notes
+
+If you are working on the backend:
+
+```bash
+cd backend
+uvicorn main:app --host 127.0.0.1 --port 5500 --reload
+```
+
+If you are working on the UI only, you can open static files directly in `public/` or serve them through the Python app.
+
+## License
+
+This repository includes third-party content and data sources for competitive programming research. The CPH Book content is explicitly noted as CC BY-NC-SA 4.0. Other source content and project code are provided for research and educational use within the repository context.
