@@ -40,6 +40,7 @@ def create_textgrad_model(textGradModel, model, system_prompt, api_key=None, tex
 
 def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None,textGrad_api_key=None,temperature=0.0):
     """Generator version that yields events for streaming."""
+    loops = max(1, min(int(loops), 5))
     if loops < 1:
         loops = 1
 

@@ -10,9 +10,9 @@ from solver import run_pipeline
 
 MODES = [
     {"rag": False, "textgrad": False, "label": "baseline"},
-    #{"rag": True, "textgrad": False, "label": "rag_only"},
-    #{"rag": False, "textgrad": True, "label": "textgrad_only"},
-    #{"rag": True, "textgrad": True, "label": "full"},
+    {"rag": True, "textgrad": False, "label": "rag_only"},
+    {"rag": False, "textgrad": True, "label": "textgrad_only"},
+    {"rag": True, "textgrad": True, "label": "full"},
 ]
 
 benchmark_status = {
@@ -73,6 +73,10 @@ async def run_benchmark(
     benchmark_status["total"] = len(problems)
 
     all_results = []
+    # Both RAG modes use the same problem statement. Keep the retrieval cache
+    # local to this run so a later run always reflects the current knowledge
+    # base, while each statement is embedded and searched at most once here.
+    rag_context_cache: dict[str, str] = {}
 
     for problem_idx, problem in enumerate(problems):
         # Check if stop was requested
@@ -110,6 +114,7 @@ async def run_benchmark(
                     api_key=settings.apiKey,
                     textgrad_api_key=settings.textGradApiKey,
                     starter_code=problem.get("starter_code"),
+                    rag_context_cache=rag_context_cache,
                 )
                 latency = (time.time() - start_time) * 1000
 

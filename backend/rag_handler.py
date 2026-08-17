@@ -127,7 +127,9 @@ def query_rag(
             query_texts=[query_text],
             n_results=n_results,
             where=filters,
-            include=["documents", "metadatas", "distances", "embeddings"]
+            # The caller only consumes documents, metadata, and distances.
+            # Returning embedding vectors adds avoidable serialization work.
+            include=["documents", "metadatas", "distances"]
         )
         
         # Format results

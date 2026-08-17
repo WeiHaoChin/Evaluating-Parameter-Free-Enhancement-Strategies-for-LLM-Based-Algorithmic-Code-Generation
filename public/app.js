@@ -93,7 +93,7 @@ function saveConversation(messages, settings) {
   const conversations = loadSavedConversations();
   
   // Filter out the welcome message - but keep all user and assistant messages
-  const welcomeText = 'Welcome! This demo UI is styled like ChatGPT. Open the settings page to customize model or evaluation settings.';
+  const welcomeText = 'Welcome! This competitive-programming evaluation platform is styled like ChatGPT. Open the settings page to customize model or evaluation settings.';
   const filteredMessages = messages.filter(m => {
     // Keep all messages except the welcome message from assistant
     if (m.role === 'assistant' && m.text === welcomeText) {
@@ -135,7 +135,7 @@ const state = {
     return [
       {
         role: 'assistant',
-        text: 'Welcome! This demo UI is styled like ChatGPT. Open the settings page to customize model, benchmark, or evaluation settings.',
+        text: 'Welcome! This competitive-programming evaluation platform is styled like ChatGPT. Open the settings page to customize model, benchmark, or evaluation settings.',
       },
     ];
   })(),
@@ -639,7 +639,7 @@ if (newChatBtn) {
     state.messages = [
       {
         role: 'assistant',
-        text: 'Welcome! This demo UI is styled like ChatGPT. Open the settings page to customize model or evaluation settings.',
+        text: 'Welcome! This competitive-programming evaluation platform is styled like ChatGPT. Open the settings page to customize model or evaluation settings.',
       },
     ];
     saveCurrentChat(state.messages);

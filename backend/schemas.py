@@ -20,7 +20,7 @@ Requirements:
     includeRag: bool            = Field(default=True)
     includeTextGrad: bool       = Field(default=True)
     textGradModel: str          = Field(default="gemma3:4b")
-    textGradLoops: int          = Field(default=1, ge=1)
+    textGradLoops: int          = Field(default=1, ge=1, le=5)
     textGradLossPrompt: str     = Field(default="""You are evaluating a competitive programming solution. Your feedback will 
 be used to improve the prompt that generated this solution.
 

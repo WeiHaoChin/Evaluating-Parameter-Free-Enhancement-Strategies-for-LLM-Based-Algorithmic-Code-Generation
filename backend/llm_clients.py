@@ -1,3 +1,6 @@
+import random
+import time
+
 from ollama import Client
 from google import genai
 

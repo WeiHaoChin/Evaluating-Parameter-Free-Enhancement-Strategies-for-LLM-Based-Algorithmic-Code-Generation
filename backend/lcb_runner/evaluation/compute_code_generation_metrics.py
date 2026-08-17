@@ -27,7 +27,8 @@ from backend.lcb_runner.evaluation.pass_k_utils import compute_metrics_from_resu
 # child can fail intermittently (FileNotFoundError / ForkAwareLocal errors).
 # A Queue avoids the reconnect entirely, and spawn avoids the fork-after-
 # threads hazard on top of that.
-mp_ctx = multiprocessing.get_context("fork")
+_start_method = "fork" if "fork" in multiprocessing.get_all_start_methods() else "spawn"
+mp_ctx = multiprocessing.get_context(_start_method)
 
 
 def _temp_run(sample, generation, debug, timeout, q):

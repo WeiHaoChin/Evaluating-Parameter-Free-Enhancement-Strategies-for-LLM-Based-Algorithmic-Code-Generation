@@ -24,8 +24,11 @@ const backToChat = document.getElementById('backToChat');
 const downloadDatasetBtn = document.getElementById('downloadDatasetBtn');
 const datasetStatus = document.getElementById('datasetStatus');
 const datasetVersionSelect = document.getElementById('datasetVersionSelect');
+const buildRagBtn = document.getElementById('buildRagBtn');
+const ragBuildStatus = document.getElementById('ragBuildStatus');
 const BACKEND_URL = 'http://localhost:5050';
 let datasetStatusInterval = null;
+let ragBuildStatusInterval = null;
 
 let defaultSettings = {};
 const MODELS = [
@@ -82,7 +85,7 @@ function getSettingsFromForm() {
     includeRag: includeRag.checked,
     includeTextGrad: includeTextGrad.checked,
     textGradModel: textGradModelSelect.value,
-    textGradLoops: parseInt(textGradLoopsInput.value, 10) || 1,
+    textGradLoops: Math.min(5, Math.max(1, parseInt(textGradLoopsInput.value, 10) || 1)),
     textGradLossPrompt: textGradLossPrompt.value.trim() || 'Evaluate this answer. It should be factual, clear, and directly answer the question.',
     systemPrompt: systemPrompt.value,
     apiKey: apiKeyInput.value.trim(),
@@ -103,7 +106,7 @@ function validateImportedSettings(settings) {
   if (!Number.isFinite(Number(imported.temperature)) || Number(imported.temperature) < 0 || Number(imported.temperature) > 1) {
     throw new Error('The file contains an invalid temperature.');
   }
-  if (!Number.isInteger(Number(imported.textGradLoops)) || Number(imported.textGradLoops) < 1 || Number(imported.textGradLoops) > 50) {
+  if (!Number.isInteger(Number(imported.textGradLoops)) || Number(imported.textGradLoops) < 1 || Number(imported.textGradLoops) > 5) {
     throw new Error('The file contains an invalid TextGrad loop count.');
   }
   for (const key of ['includeRag', 'includeTextGrad']) {
@@ -133,7 +136,7 @@ function populateForm(settings) {
   includeTextGrad.checked = settings.includeTextGrad ?? false;
   textGradModelSelect.value = settings.textGradModel || 'gemma3:4b';
   textGradApiKeyInput.value = settings.textGradApiKey || '';
-  textGradLoopsInput.value = settings.textGradLoops || 1;
+  textGradLoopsInput.value = Math.min(5, Math.max(1, settings.textGradLoops || 1));
   systemPrompt.value = settings.systemPrompt || '';
   textGradLossPrompt.value = settings.textGradLossPrompt || 'Evaluate this answer. It should be factual, clear, and directly answer the question.';
   updateApiKeyVisibility(settings.model);
@@ -186,6 +189,31 @@ function updateTextGradVisibility(enabled) {
   textGradLoopsInput.required = enabled;
 }
 
+async function refreshRagBuildStatus() {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/rag/build/status`);
+    if (!response.ok) throw new Error('Unable to check RAG build status');
+    const status = await response.json();
+    if (status.running) {
+      ragBuildStatus.textContent = 'Creating RAG chunks and rebuilding the search index. This may take several minutes...';
+      buildRagBtn.disabled = true;
+      buildRagBtn.textContent = 'Creating chunks...';
+      return;
+    }
+    clearInterval(ragBuildStatusInterval);
+    buildRagBtn.disabled = false;
+    buildRagBtn.textContent = 'Create RAG chunks';
+    ragBuildStatus.textContent = status.error
+      ? `Chunk creation failed: ${status.error}`
+      : status.output
+        ? 'RAG chunks created and the search index is ready.'
+        : 'Create chunks from the scraped RAG data and rebuild the local search index.';
+  } catch (error) {
+    ragBuildStatus.textContent = 'RAG build status unavailable. Is the backend running?';
+    buildRagBtn.disabled = true;
+  }
+}
+
 async function refreshDatasetStatus() {
   const version = datasetVersionSelect.value;
   try {
@@ -232,6 +260,22 @@ downloadDatasetBtn.addEventListener('click', async () => {
 });
 
 datasetVersionSelect.addEventListener('change', refreshDatasetStatus);
+
+buildRagBtn.addEventListener('click', async () => {
+  buildRagBtn.disabled = true;
+  buildRagBtn.textContent = 'Starting...';
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/rag/build`, { method: 'POST' });
+    if (!response.ok) throw new Error((await response.json()).detail || 'Could not start RAG chunk creation');
+    await refreshRagBuildStatus();
+    clearInterval(ragBuildStatusInterval);
+    ragBuildStatusInterval = setInterval(refreshRagBuildStatus, 2000);
+  } catch (error) {
+    ragBuildStatus.textContent = error.message;
+    buildRagBtn.disabled = false;
+    buildRagBtn.textContent = 'Create RAG chunks';
+  }
+});
 
 temperatureInput.addEventListener('input', updateSliderValue);
 modelSelect.addEventListener('change', () => updateApiKeyVisibility(modelSelect.value));
@@ -305,6 +349,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const settings = loadSettings();
   populateForm(settings);
   refreshDatasetStatus();
+  refreshRagBuildStatus();
   // ... rest of your existing DOMContentLoaded code
 });
 

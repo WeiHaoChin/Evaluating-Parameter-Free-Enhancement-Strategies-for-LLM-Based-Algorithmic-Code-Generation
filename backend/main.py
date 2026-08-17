@@ -1,5 +1,7 @@
 import json
 import logging
+import asyncio
+from pathlib import Path
 import sys
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -22,6 +24,11 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
+
+RAG_PIPELINE_PATH = Path(__file__).parent / "RAG" / "pipeline" / "rag_pipeline.py"
+RAG_DATA_ROOT = Path(__file__).parent / "data"
+_rag_build_status = {"running": False, "error": None, "output": ""}
+_rag_build_task: Optional[asyncio.Task] = None
 
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
@@ -132,6 +139,56 @@ async def chat(request: ChatRequest):
 @app.get("/api/status")
 async def status():
     return {"status": "ok", "backend": "available"}
+
+
+async def _build_rag_chunks() -> None:
+    """Run the chunking pipeline and reconnect the in-process RAG client."""
+    global _rag_build_task
+    command = [
+        sys.executable,
+        str(RAG_PIPELINE_PATH),
+        "--data-root", str(RAG_DATA_ROOT),
+        "--embedder", "local",
+        "--vector-db", "chroma",
+    ]
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=str(Path(__file__).parent.parent),
+        )
+        output, _ = await process.communicate()
+        log_output = output.decode("utf-8", errors="replace")[-4000:]
+        _rag_build_status["output"] = log_output
+        if process.returncode != 0:
+            raise RuntimeError(f"RAG pipeline exited with code {process.returncode}.")
+
+        if not initialize_rag(embedder="local", local_model="BAAI/bge-small-en-v1.5"):
+            raise RuntimeError("Chunks were created, but the RAG database could not be reloaded.")
+    except Exception as exc:
+        logger.exception("RAG chunk build failed")
+        _rag_build_status["error"] = str(exc)
+    finally:
+        _rag_build_status["running"] = False
+        _rag_build_task = None
+
+
+@app.post("/api/rag/build")
+async def build_rag_chunks():
+    """Start rebuilding RAG chunks from the scraped local data."""
+    global _rag_build_task
+    if _rag_build_status["running"]:
+        raise HTTPException(status_code=409, detail="RAG chunk creation is already running.")
+
+    _rag_build_status.update({"running": True, "error": None, "output": ""})
+    _rag_build_task = asyncio.create_task(_build_rag_chunks())
+    return {"started": True}
+
+
+@app.get("/api/rag/build/status")
+async def rag_build_status():
+    return _rag_build_status
 
 # ── Default settings endpoint ──────────────────────────────────────────────────
 @app.get("/api/defaults")

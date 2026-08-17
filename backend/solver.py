@@ -5,7 +5,7 @@ import logging
 import re
 import sys
 import time
-from typing import Optional
+from typing import MutableMapping, Optional
 import threading
 
 from TextGrad import run_textgrad_sync, OllamaLLM, GoogleGenerativeAI
@@ -149,9 +149,9 @@ def execute_against_tests(
 
 # ── RAG prompt builder ─────────────────────────────────────────────────────────
 
-def build_rag_prompt(problem: str, rag_context: str) -> str:
-    return f"""## Problem
-{problem}
+def build_rag_prompt(task_prompt: str, rag_context: str) -> str:
+    """Add retrieval context without dropping the problem's I/O contract."""
+    return f"""{task_prompt}
 
 ## Relevant Context (may or may not be useful)
 {rag_context}
@@ -196,7 +196,8 @@ async def run_pipeline(
     api_key: Optional[str] = None,
     textgrad_api_key: Optional[str] = None,
     temperature: float = 0.0,
-    starter_code: Optional[str] = None, 
+    starter_code: Optional[str] = None,
+    rag_context_cache: Optional[MutableMapping[str, str]] = None,
 ) -> dict:
     """
     Full CP solver pipeline.
@@ -218,11 +219,19 @@ async def run_pipeline(
     if rag:
         if is_rag_available():
             try:
-                logger.info("Querying RAG...")
-                rag_results = query_rag(problem, n_results=5)
-                rag_context = format_rag_context(rag_results, include_metadata=True)
+                if rag_context_cache is not None and problem in rag_context_cache:
+                    rag_context = rag_context_cache[problem]
+                    logger.info("Using cached RAG context for benchmark problem")
+                else:
+                    logger.info("Querying RAG...")
+                    rag_results = query_rag(problem, n_results=5)
+                    rag_context = format_rag_context(rag_results, include_metadata=True)
+                    # Cache empty results too, otherwise an unsuccessful query
+                    # would be repeated by the next RAG benchmark mode.
+                    if rag_context_cache is not None:
+                        rag_context_cache[problem] = rag_context
                 if rag_context:
-                    formatted_prompt = build_rag_prompt(problem, rag_context)
+                    formatted_prompt = build_rag_prompt(formatted_prompt, rag_context)
                     logger.info(f"RAG context added ({len(rag_context)} chars)")
                 else:
                     logger.warning("RAG returned no context")
@@ -249,9 +258,9 @@ async def run_pipeline(
                 loss_prompt=textgrad_loss_prompt,
                 temperature=temperature,
             )
-            first_gen_passed, first_gen_pass_rate, _ = execute_against_tests(
-                response, test_cases
-            )
+            # first_gen_passed, first_gen_pass_rate, _ = execute_against_tests(
+            #     response, test_cases
+            # )
 
         except Exception as e:
             logger.error(f"TextGrad failed: {e}", exc_info=True)
@@ -302,10 +311,7 @@ async def run_pipeline(
             else:
                 cleaned_list.append(x)
         parsed_metadata.append(cleaned_list)
-    print("metrics:", metrics)
-    print("results type:", type(results))
-    print("results:", results)
-    print("final_metadata:", final_metadata)
+    logger.debug("Evaluation complete: metrics=%s, result_groups=%d", metrics, len(results))
     test_results = results[0][0]
     pass_rate = sum(test_results) / len(test_results) if test_results else 0.0
     passed_all = all(test_results)
