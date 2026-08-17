@@ -1,3 +1,7 @@
+⚠️ Status: Work in Progress (WIP)
+This repository is actively under development. Experimental results, code modules, and evaluation scripts are subject to ongoing updates and refinements.
+
+
 # FYP: Competitive Programming LLM Evaluation Platform
 
 This project combines a browser-based evaluation UI with a retrieval-augmented generation (RAG) pipeline for competitive programming data. It supports interactive prompting, optional TextGrad refinement, benchmarking against LiveCodeBench, and retrieval over a CP knowledge base built from public problem and editorial sources.
