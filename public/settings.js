@@ -201,6 +201,12 @@ async function refreshRagBuildStatus() {
       return;
     }
     clearInterval(ragBuildStatusInterval);
+    if (status.chunks_exist) {
+      buildRagBtn.disabled = true;
+      buildRagBtn.textContent = 'RAG chunks already exist';
+      ragBuildStatus.textContent = `${status.chunk_count} RAG chunks already exist and are ready to use.`;
+      return;
+    }
     buildRagBtn.disabled = false;
     buildRagBtn.textContent = 'Create RAG chunks';
     ragBuildStatus.textContent = status.error
@@ -272,8 +278,7 @@ buildRagBtn.addEventListener('click', async () => {
     ragBuildStatusInterval = setInterval(refreshRagBuildStatus, 2000);
   } catch (error) {
     ragBuildStatus.textContent = error.message;
-    buildRagBtn.disabled = false;
-    buildRagBtn.textContent = 'Create RAG chunks';
+    await refreshRagBuildStatus();
   }
 });
 

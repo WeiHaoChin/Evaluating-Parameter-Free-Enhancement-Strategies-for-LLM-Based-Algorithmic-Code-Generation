@@ -23,6 +23,8 @@ const errorBreakdown = document.getElementById('errorBreakdown');
 const exportResultsBtn = document.getElementById('exportResultsBtn');
 const loadLatestResultsBtn = document.getElementById('loadLatestResultsBtn');
 const viewResultsHistoryBtn = document.getElementById('viewResultsHistoryBtn');
+const loadResultsFileBtn = document.getElementById('loadResultsFileBtn');
+const resultsFileInput = document.getElementById('resultsFileInput');
 const historyModal = document.getElementById('historyModal');
 const closeHistoryBtn = document.getElementById('closeHistoryBtn');
 const historyList = document.getElementById('historyList');
@@ -52,6 +54,8 @@ function setupEventListeners() {
   exportResultsBtn.addEventListener('click', exportResults);
   loadLatestResultsBtn.addEventListener('click', loadLatestResults);
   viewResultsHistoryBtn.addEventListener('click', showResultsHistory);
+  loadResultsFileBtn.addEventListener('click', () => resultsFileInput.click());
+  resultsFileInput.addEventListener('change', loadResultsFile);
   closeHistoryBtn.addEventListener('click', closeResultsHistory);
   historyModal.addEventListener('click', (e) => {
     if (e.target === historyModal) closeResultsHistory();
@@ -449,45 +453,41 @@ function displayProblemResults(results) {
   headerRow.className = 'header-row';
   headerRow.innerHTML = `
     <th>Problem</th>
-    <th>Passed</th>
-    <th>Pass Rate</th>
-    <th>First Gen Passed</th>
-    <th>First Gen Pass Rate</th>
-    <th>Error Type</th>
-    <th>RAG Context</th>
-    <th>Latency (ms)</th>
+    <th>Baseline Pass Rate</th>
+    <th>RAG Only Pass Rate</th>
+    <th>TextGrad Only Pass Rate</th>
+    <th>RAG + TextGrad Pass Rate</th>
   `;
 
   // Add result rows
   for (const result of results) {
-    const problem = result.problem;
-    const modeResult = result.modes.baseline; // Assuming we're looking at baseline mode
-
-    if (!modeResult) continue;
+    const problem = result.problem || {};
+    const modeResult = (result.modes || {}).baseline || {};
 
     const row = table.insertRow();
     row.className = modeResult.passed ? 'row-passed' : 'row-failed';
 
     const passedStatus = modeResult.passed ? '✓' : '✗';
     const passRatePercent = (modeResult.pass_rate * 100).toFixed(1);
-    const firstGenPassedStatus = modeResult.first_gen_passed ? '✓' : '✗';
-    const firstGenPassRatePercent = (modeResult.first_gen_pass_rate * 100).toFixed(1);
+    const textGradStatus = modeResult.textgrad_included ? 'Yes' : 'No';
     const ragContextStatus = modeResult.rag_context_included ? 'Yes' : 'No';
     const errorType = modeResult.error_type || '-';
 
     row.innerHTML = `
       <td title="${problem.title}">${problem.title}</td>
-      <td>${passedStatus}</td>
-      <td>${passRatePercent}%</td>
-      <td>${firstGenPassedStatus}</td>
-      <td>${firstGenPassRatePercent}%</td>
-      <td>${errorType}</td>
-      <td>${ragContextStatus}</td>
-      <td>${modeResult.latency_ms.toFixed(0)}</td>
+      <td>${formatModePassRate(result.modes?.baseline)}</td>
+      <td>${formatModePassRate(result.modes?.rag_only)}</td>
+      <td>${formatModePassRate(result.modes?.textgrad_only)}</td>
+      <td>${formatModePassRate(result.modes?.full)}</td>
     `;
   }
 
   problemResultsContainer.appendChild(table);
+}
+
+function formatModePassRate(modeResult) {
+  const passRate = Number(modeResult?.pass_rate);
+  return Number.isFinite(passRate) ? `${(passRate * 100).toFixed(1)}%` : '—';
 }
 
 function exportResults() {
@@ -524,6 +524,46 @@ async function loadLatestResults() {
   }
 }
 
+async function loadResultsFile(event) {
+  const [file] = event.target.files;
+  if (!file) return;
+
+  try {
+    const data = normaliseImportedResults(JSON.parse(await file.text()));
+    currentResults = data;
+    displayResults(data);
+
+    configPanel.style.display = 'block';
+    statusPanel.style.display = 'none';
+    resultsPanel.style.display = 'block';
+    showAlert(`Loaded results from ${file.name}`, 'success');
+  } catch (error) {
+    showAlert(`Unable to load results file: ${error.message}`, 'error');
+  } finally {
+    // Permit selecting the same file again after correcting or reviewing it.
+    event.target.value = '';
+  }
+}
+
+function normaliseImportedResults(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('the file does not contain a benchmark-results object');
+  }
+  if (!Array.isArray(data.results) || !data.summary || typeof data.summary !== 'object') {
+    throw new Error('the file is missing benchmark results or its summary');
+  }
+
+  // Result exports made before the TextGrad flag was saved can still be viewed.
+  for (const problemResult of data.results) {
+    for (const [modeName, modeResult] of Object.entries(problemResult?.modes || {})) {
+      if (modeResult && typeof modeResult === 'object' && modeResult.textgrad_included === undefined) {
+        modeResult.textgrad_included = modeName === 'textgrad_only' || modeName === 'full';
+      }
+    }
+  }
+  return data;
+}
+
 async function showResultsHistory() {
   try {
     const response = await fetch(`${BACKEND_URL}/benchmark/results/all`);
@@ -550,15 +590,19 @@ function displayResultsHistory(allResults) {
     item.className = 'history-item';
 
     const timestamp = new Date(result.timestamp).toLocaleString();
-    const totalProblems = result.summary.overall.baseline?.total_problems || 0;
+    const totalProblems = result.summary?.overall?.baseline?.total_problems || 0;
     const baselineRate = (
-      (result.summary.overall.baseline?.pass_rate || 0) * 100
+      (result.summary?.overall?.baseline?.pass_rate || 0) * 100
     ).toFixed(1);
+    const textGradSetting = result.settings?.includeTextGrad;
+    const textGradLabel = textGradSetting === undefined || textGradSetting === null
+      ? 'TextGrad setting unavailable'
+      : `TextGrad enabled: ${textGradSetting ? 'Yes' : 'No'}`;
 
     item.innerHTML = `
       <div class="history-item-header">
         <div class="history-timestamp">${timestamp}</div>
-        <div class="history-stats">${totalProblems} problems | Baseline: ${baselineRate}%</div>
+        <div class="history-stats">${totalProblems} problems | Baseline: ${baselineRate}% | ${textGradLabel}</div>
       </div>
     `;
 

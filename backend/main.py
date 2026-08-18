@@ -13,7 +13,13 @@ from pydantic import BaseModel, Field
 
 from solver import call_llm, run_pipeline, build_rag_prompt
 from TextGrad import run_textgrad, run_textgrad_sync
-from rag_handler import initialize_rag, query_rag, format_rag_context, is_rag_available
+from rag_handler import (
+    format_rag_context,
+    get_rag_chunk_count,
+    initialize_rag,
+    is_rag_available,
+    query_rag,
+)
 from routes.benchmark import router as benchmark_router
 from schemas import Settings, ChatRequest
 
@@ -176,10 +182,15 @@ async def _build_rag_chunks() -> None:
 
 @app.post("/api/rag/build")
 async def build_rag_chunks():
-    """Start rebuilding RAG chunks from the scraped local data."""
+    """Create RAG chunks when no chunks have already been indexed."""
     global _rag_build_task
     if _rag_build_status["running"]:
         raise HTTPException(status_code=409, detail="RAG chunk creation is already running.")
+    if get_rag_chunk_count() > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="RAG chunks already exist. Existing chunks cannot be recreated from Settings.",
+        )
 
     _rag_build_status.update({"running": True, "error": None, "output": ""})
     _rag_build_task = asyncio.create_task(_build_rag_chunks())
@@ -188,7 +199,12 @@ async def build_rag_chunks():
 
 @app.get("/api/rag/build/status")
 async def rag_build_status():
-    return _rag_build_status
+    chunk_count = get_rag_chunk_count()
+    return {
+        **_rag_build_status,
+        "chunk_count": chunk_count,
+        "chunks_exist": chunk_count > 0,
+    }
 
 # ── Default settings endpoint ──────────────────────────────────────────────────
 @app.get("/api/defaults")

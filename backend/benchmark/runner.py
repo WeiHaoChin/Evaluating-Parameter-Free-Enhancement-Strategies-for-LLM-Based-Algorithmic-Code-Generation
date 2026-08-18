@@ -121,6 +121,7 @@ async def run_benchmark(
                 mode_result = {
                     **response,
                     "latency_ms": latency,
+                    "textgrad_included": mode["textgrad"],
                 }
 
                 problem_results["modes"][mode_label] = mode_result
@@ -130,10 +131,10 @@ async def run_benchmark(
                     "response": None,
                     "passed": False,
                     "pass_rate": 0.0,
-                    "first_gen_passed": False,
                     "error_type": "EXCEPTION",
                     "system_prompt_used": None,
                     "latency_ms": 0,
+                    "textgrad_included": mode["textgrad"],
                     "exception": str(e),
                 }
 

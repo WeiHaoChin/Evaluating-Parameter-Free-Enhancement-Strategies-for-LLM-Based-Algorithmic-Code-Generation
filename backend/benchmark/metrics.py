@@ -16,7 +16,6 @@ def compute_metrics(results: list[dict]) -> dict:
     mode_stats = defaultdict(
         lambda: {
             "pass_count": 0,
-            "first_gen_pass_count": 0,
             "second_gen_pass_count": 0,
             "total": 0,
             "latencies": [],
@@ -40,9 +39,6 @@ def compute_metrics(results: list[dict]) -> dict:
             passed = mode_result.get("passed", False)
             if passed:
                 stats["pass_count"] += 1
-
-            if mode_result.get("first_gen_passed", False):
-                stats["first_gen_pass_count"] += 1
 
             if mode_result.get("second_gen_passed", False):
                 stats["second_gen_pass_count"] += 1
@@ -74,7 +70,6 @@ def compute_metrics(results: list[dict]) -> dict:
             continue
 
         pass_rate = stats["pass_count"] / total
-        first_gen_pass_rate = stats["first_gen_pass_count"] / total
         second_gen_pass_rate = stats["second_gen_pass_count"] / total
         avg_latency = (
             sum(stats["latencies"]) / len(stats["latencies"])
@@ -84,7 +79,6 @@ def compute_metrics(results: list[dict]) -> dict:
 
         mode_metrics = {
             "pass_rate": pass_rate,
-            "first_gen_pass_rate": first_gen_pass_rate,
             "second_gen_pass_rate": second_gen_pass_rate,
             "avg_latency_ms": avg_latency,
             "total_problems": total,

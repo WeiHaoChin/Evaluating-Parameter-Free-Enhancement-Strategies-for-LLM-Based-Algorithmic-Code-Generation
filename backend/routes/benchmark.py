@@ -121,7 +121,8 @@ async def start_benchmark(
             difficulty=request.difficulty,
             settings=request.settings,
         )
-        save_results(result["results"], result["summary"])
+        settings = request.settings or Settings()
+        save_results(result["results"], result["summary"], settings.dict())
 
     background_tasks.add_task(run_and_save)
 

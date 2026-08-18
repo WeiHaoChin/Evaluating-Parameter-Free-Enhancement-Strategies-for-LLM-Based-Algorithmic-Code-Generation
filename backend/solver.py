@@ -241,9 +241,7 @@ async def run_pipeline(
             logger.warning("RAG enabled but unavailable")
 
     # ── Step 2: Generate solution ──────────────────────────────────────────────
-    response            = ""
-    first_gen_passed    = False
-    first_gen_pass_rate = 0.0
+    response = ""
 
     if textgrad:
         logger.info("Running TextGrad...")
@@ -258,10 +256,6 @@ async def run_pipeline(
                 loss_prompt=textgrad_loss_prompt,
                 temperature=temperature,
             )
-            # first_gen_passed, first_gen_pass_rate, _ = execute_against_tests(
-            #     response, test_cases
-            # )
-
         except Exception as e:
             logger.error(f"TextGrad failed: {e}", exc_info=True)
             raise
@@ -313,8 +307,9 @@ async def run_pipeline(
         parsed_metadata.append(cleaned_list)
     logger.debug("Evaluation complete: metrics=%s, result_groups=%d", metrics, len(results))
     test_results = results[0][0]
-    pass_rate = sum(test_results) / len(test_results) if test_results else 0.0
-    passed_all = all(test_results)
+    pass_count = sum(1 for r in test_results if r is True)
+    pass_rate = pass_count / len(test_results) if test_results else 0.0
+    passed_all = all(r is True for r in test_results) if test_results else False
     error_type = None if passed_all else "WA"
     graded     = results[0] if results else []  # results is a dict keyed by problem index
     latency_ms = int((time.time() - start) * 1000)
@@ -330,8 +325,6 @@ async def run_pipeline(
         "passed":               passed_all,
         "pass_rate":            pass_rate,
         "graded_list":          graded,
-        "first_gen_passed":     first_gen_passed,
-        "first_gen_pass_rate":  first_gen_pass_rate,
         "error_type":           error_type,
         "rag_context_included": bool(rag_context),
         "latency_ms":           latency_ms,

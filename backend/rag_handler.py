@@ -227,3 +227,14 @@ def get_rag_augmented_response(
 def is_rag_available() -> bool:
     """Check if RAG system is initialized and ready to use."""
     return _chroma_collection is not None
+
+
+def get_rag_chunk_count() -> int:
+    """Return the number of indexed RAG chunks, or zero when unavailable."""
+    if _chroma_collection is None:
+        return 0
+    try:
+        return int(_chroma_collection.count())
+    except Exception as exc:
+        logger.warning("Unable to read RAG chunk count: %s", exc)
+        return 0
