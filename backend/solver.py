@@ -8,7 +8,8 @@ import time
 from typing import MutableMapping, Optional
 import threading
 
-from TextGrad import run_textgrad_sync, OllamaLLM, GoogleGenerativeAI
+from TextGrad import run_textgrad_sync
+from llm_clients import create_llm_client
 from rag_handler import query_rag, format_rag_context, is_rag_available
 from lcb_runner.evaluation.compute_code_generation_metrics import codegen_metrics
 
@@ -25,16 +26,7 @@ def call_llm(
     temperature: float = 0.0,
 ) -> str:
     """Call LLM directly without TextGrad."""
-    if model.startswith("gemini-"):
-        llm = GoogleGenerativeAI(model=model, api_key=api_key, temperature=temperature)
-    elif (
-        model.startswith("gemma3:")
-        or model.startswith("gpt-oss:")
-        or model.startswith("deepseek-")
-    ):
-        llm = OllamaLLM(model=model, api_key=api_key, temperature=temperature)
-    else:
-        raise ValueError(f"Unsupported model type: {model}")
+    llm = create_llm_client(model=model, api_key=api_key, temperature=temperature)
     return llm(message, system_prompt=system_prompt)
 
 
@@ -183,7 +175,7 @@ def build_task_prompt(problem: str, starter_code: Optional[str]) -> str:
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────
 
-async def run_pipeline(
+def run_pipeline(
     problem: str,
     evaluation_sample: list,
     rag: bool,
@@ -198,6 +190,7 @@ async def run_pipeline(
     temperature: float = 0.0,
     starter_code: Optional[str] = None,
     rag_context_cache: Optional[MutableMapping[str, str]] = None,
+    initial_response: Optional[str] = None,
 ) -> dict:
     """
     Full CP solver pipeline.
@@ -255,6 +248,7 @@ async def run_pipeline(
                 api_key=textgrad_api_key,
                 loss_prompt=textgrad_loss_prompt,
                 temperature=temperature,
+                initial_answer=initial_response,
             )
         except Exception as e:
             logger.error(f"TextGrad failed: {e}", exc_info=True)

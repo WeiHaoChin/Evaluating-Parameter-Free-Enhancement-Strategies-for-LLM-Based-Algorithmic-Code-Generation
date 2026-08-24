@@ -21,7 +21,7 @@ from rag_handler import (
     query_rag,
 )
 from routes.benchmark import router as benchmark_router
-from schemas import Settings, ChatRequest
+from schemas import Settings, ChatRequest, settings_defaults
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -210,7 +210,7 @@ async def rag_build_status():
 @app.get("/api/defaults")
 async def get_default_settings():
     """Get default settings from schemas.Settings"""
-    return Settings().dict()
+    return settings_defaults()
 
 # ── WebSocket endpoint ─────────────────────────────────────────────────────────
 @app.websocket("/ws/chat")

@@ -2,43 +2,38 @@ import os
 import textgrad as tg
 from textgrad import Variable, TGD
 from dotenv import load_dotenv
-from llm_clients import OllamaLLM, GoogleGenerativeAI
+from llm_clients import create_llm_client
+from config.models import get_model_provider
 
 import time
 import random
+from functools import partial
+from textgrad.variable import _backward_idempotent
 
 load_dotenv()
 API_KEY = os.getenv('OLLAMA_API_KEY')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
 def create_textgrad_model(textGradModel, model, system_prompt, api_key=None, textGrad_api_key=None,temperature=0.0):
-    llm = None
-    feedback_llm = None
-
-    if model.startswith('gemini-'):
-        llm = GoogleGenerativeAI(model=model, api_key=api_key or GOOGLE_API_KEY, temperature=temperature)
-    elif model.startswith('gemma3:') or model.startswith('gpt-oss:') or model.startswith('deepseek-'):
-        llm = OllamaLLM(model=model, api_key=api_key, temperature=temperature)
-    else:
-        raise ValueError(f"Unsupported model type for main LLM: {model}")
-    
-    if textGradModel.startswith('gemini-'):
-        feedback_llm = GoogleGenerativeAI(model=textGradModel, api_key=textGrad_api_key or GOOGLE_API_KEY, temperature=temperature)
-    elif textGradModel.startswith('gemma3:') or textGradModel.startswith('gpt-oss:') or textGradModel.startswith('deepseek-'):
-        feedback_llm = OllamaLLM(model=textGradModel, api_key=textGrad_api_key, temperature=temperature)
-    else:
-        raise ValueError(f"Unsupported model type for TextGrad LLM: {textGradModel}")
-    # Set the backward engine (feedback LLM) that generates textual gradients
-    # during TextGrad's optimization loop — analogous to backprop in neural networks.
-    # override=True replaces any previously configured backward engine.
-    tg.set_backward_engine(feedback_llm, override=True)
+    main_api_key = api_key or (GOOGLE_API_KEY if get_model_provider(model) == "google" else None)
+    feedback_api_key = textGrad_api_key or (
+        GOOGLE_API_KEY if get_model_provider(textGradModel) == "google" else None
+    )
+    llm = create_llm_client(model=model, api_key=main_api_key, temperature=temperature)
+    feedback_llm = create_llm_client(
+        model=textGradModel,
+        api_key=feedback_api_key,
+        temperature=temperature,
+    )
     # Wrap the main LLM as a BlackboxLLM node in TextGrad's computation graph.
     # "Blackbox" means TextGrad interacts with it purely via text in/out,
     # using the backward engine to critique and iteratively refine its outputs.
-    return tg.BlackboxLLM(llm,system_prompt=system_prompt)
+    # Keep the backward engine local to this run. The previous global engine
+    # made simultaneous benchmark modes race with one another.
+    return tg.BlackboxLLM(llm, system_prompt=system_prompt), feedback_llm
 
 
-def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None,textGrad_api_key=None,temperature=0.0):
+def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None,textGrad_api_key=None,temperature=0.0, initial_answer=None):
     """Generator version that yields events for streaming."""
     loops = max(1, min(int(loops), 5))
     if loops < 1:
@@ -46,8 +41,8 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
 
     prompt = Variable(prompt_text, requires_grad=False, role_description='The user input/question provided to the model. This is fixed and should not be modified.')
     system_prompt_var = Variable(system_prompt, requires_grad=True, role_description="The system prompt that defines the model's behavior and instructions. Optimize this to improve the quality, accuracy, and clarity of the model's responses.")
-    textgrad_model = create_textgrad_model(textGradModel=textGradModel, model=model, system_prompt=system_prompt_var, api_key=api_key,textGrad_api_key=textGrad_api_key,temperature=temperature)
-    optimizer = TGD(parameters=[system_prompt_var])
+    textgrad_model, feedback_llm = create_textgrad_model(textGradModel=textGradModel, model=model, system_prompt=system_prompt_var, api_key=api_key,textGrad_api_key=textGrad_api_key,temperature=temperature)
+    optimizer = TGD(parameters=[system_prompt_var], engine=feedback_llm)
 
     answer_text = ''
     for loop_idx in range(loops):
@@ -58,8 +53,24 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
             'original_prompt': prompt.value
         }
 
-        # Get LLM response
-        answer = textgrad_model(prompt)
+        # When the benchmark already generated an answer for this exact prompt,
+        # evaluate that answer instead of paying for a duplicate initial call.
+        # The identity gradient connects its critique to the optimised system
+        # prompt just as the normal BlackboxLLM output would.
+        if loop_idx == 0 and initial_answer is not None:
+            answer = Variable(
+                initial_answer,
+                predecessors=[system_prompt_var],
+                requires_grad=True,
+                role_description="initial solution reused from the paired benchmark mode",
+            )
+            answer.set_grad_fn(partial(
+                _backward_idempotent,
+                variables=[system_prompt_var],
+                summation=answer,
+            ))
+        else:
+            answer = textgrad_model(prompt)
         answer_text = answer.value
         print(f"--- Iteration {loop_idx+1} ---")
         print(f"Response: {answer_text}\n")
@@ -72,7 +83,7 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
         }
 
         # Get critic feedback (loss)
-        loss_fn = tg.TextLoss(loss_prompt)
+        loss_fn = tg.TextLoss(loss_prompt, engine=feedback_llm)
         loss = loss_fn(answer)
         critic_response = str(loss)
         print(f"--- Iteration {loop_idx+1} ---")
@@ -86,7 +97,7 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
         }
 
         # Optimize
-        loss.backward()
+        loss.backward(engine=feedback_llm)
         optimizer.step()
         
         # Send updated prompt event update system prompt after optimization
@@ -117,10 +128,10 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
     }
 
 
-def run_textgrad_sync(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None, textGrad_api_key=None, temperature=0.0):
+def run_textgrad_sync(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None, textGrad_api_key=None, temperature=0.0, initial_answer=None):
     """Synchronous version that collects all events and returns final answer (for backward compatibility)."""
     answer_text = ''
-    for event in run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops, api_key, textGrad_api_key, temperature):
+    for event in run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops, api_key, textGrad_api_key, temperature, initial_answer):
         if event['type'] == 'complete':
             answer_text = event['answer']
     return answer_text

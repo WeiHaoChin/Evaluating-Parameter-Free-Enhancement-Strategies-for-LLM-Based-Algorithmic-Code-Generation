@@ -97,11 +97,13 @@ async def run_benchmark(
             "modes": {},
         }
 
-        for mode in MODES:
+        async def run_mode(mode: dict, initial_response: Optional[str] = None) -> tuple[str, dict]:
+            """Run one blocking solver invocation in a worker thread."""
             mode_label = mode["label"]
             try:
                 start_time = time.time()
-                response = await run_pipeline(
+                response = await asyncio.to_thread(
+                    run_pipeline,
                     problem=problem["statement"],
                     evaluation_sample=problem["evaluation_sample"],
                     rag=mode["rag"],
@@ -115,6 +117,7 @@ async def run_benchmark(
                     textgrad_api_key=settings.textGradApiKey,
                     starter_code=problem.get("starter_code"),
                     rag_context_cache=rag_context_cache,
+                    initial_response=initial_response,
                 )
                 latency = (time.time() - start_time) * 1000
 
@@ -123,11 +126,8 @@ async def run_benchmark(
                     "latency_ms": latency,
                     "textgrad_included": mode["textgrad"],
                 }
-
-                problem_results["modes"][mode_label] = mode_result
-
             except Exception as e:
-                problem_results["modes"][mode_label] = {
+                mode_result = {
                     "response": None,
                     "passed": False,
                     "pass_rate": 0.0,
@@ -137,6 +137,25 @@ async def run_benchmark(
                     "textgrad_included": mode["textgrad"],
                     "exception": str(e),
                 }
+            return mode_label, mode_result
+
+        # The independent initial generations start together. They are then
+        # reused as the first TextGrad answer for the matching prompt: baseline
+        # for textgrad_only and RAG for full. This removes two main-model calls
+        # per problem while retaining a fair RAG + TextGrad comparison.
+        baseline_task = asyncio.create_task(run_mode(MODES[0]))
+        rag_task = asyncio.create_task(run_mode(MODES[1]))
+        initial_modes = await asyncio.gather(baseline_task, rag_task)
+        problem_results["modes"].update(dict(initial_modes))
+
+        textgrad_task = asyncio.create_task(
+            run_mode(MODES[2], problem_results["modes"]["baseline"].get("response"))
+        )
+        full_task = asyncio.create_task(
+            run_mode(MODES[3], problem_results["modes"]["rag_only"].get("response"))
+        )
+        refined_modes = await asyncio.gather(textgrad_task, full_task)
+        problem_results["modes"].update(dict(refined_modes))
 
         all_results.append(problem_results)
         await asyncio.sleep(0)

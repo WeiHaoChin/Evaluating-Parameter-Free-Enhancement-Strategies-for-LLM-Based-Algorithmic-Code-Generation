@@ -1,7 +1,13 @@
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from config.models import MODEL_CONFIG
 # 1. APPROACH: Brief explanation of your algorithm and why it's correct
 # ── Schemas ────────────────────────────────────────────────────────────────────
+# The frontend obtains this list from /api/defaults rather than maintaining a
+# separate hard-coded copy. Keep model defaults and validation in this module.
+SUPPORTED_MODELS = tuple(MODEL_CONFIG)
+
+
 class Settings(BaseModel):
     model: str                  = Field(default="gemma3:4b")
     systemPrompt: str           = Field(default="""You are an expert competitive programmer. Given a competitive programming 
@@ -40,6 +46,18 @@ the model to explicitly consider overflow", not "the code has a bug on line 5".
 The goal is to improve the instruction, not patch the output directly.""")
     apiKey: Optional[str]       = Field(default=None)
     textGradApiKey: Optional[str] = Field(default=None)
+
+    @field_validator("model", "textGradModel")
+    @classmethod
+    def supported_model(cls, value: str) -> str:
+        if value not in SUPPORTED_MODELS:
+            raise ValueError(f"Unsupported model. Choose one of: {', '.join(SUPPORTED_MODELS)}")
+        return value
+
+
+def settings_defaults() -> dict:
+    """Settings defaults plus the supported choices for settings clients."""
+    return {**Settings().model_dump(), "models": list(SUPPORTED_MODELS)}
 
 
 class ChatRequest(BaseModel):

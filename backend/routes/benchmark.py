@@ -5,7 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from benchmark.runner import run_benchmark, get_status, request_stop
 from benchmark.logger import save_results, load_latest_results, load_all_results
 from benchmark.prefetch_lcb import is_prefetched, prefetch
-from schemas import Settings, BenchmarkRequest
+from schemas import Settings, BenchmarkRequest, settings_defaults
 from rag_handler import is_rag_available
 
 router = APIRouter(prefix="/benchmark", tags=["benchmark"])
@@ -180,4 +180,4 @@ async def get_default_settings() -> dict:
     """
     Get default settings from schemas.Settings
     """
-    return Settings().dict()
+    return settings_defaults()

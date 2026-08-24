@@ -1,8 +1,10 @@
 import random
 import time
 
+import httpx
 from ollama import Client
 from google import genai
+from config.models import get_model_provider
 
 class OllamaLLM:
     def __init__(self, model, host='https://ollama.com', api_key=None, temperature=0.0):
@@ -56,3 +58,84 @@ class GoogleGenerativeAI:
                 else:
                     # For other errors, don't retry
                     raise
+
+
+class AnthropicLLM:
+    """Minimal Anthropic Messages API adapter matching the other LLM clients."""
+
+    def __init__(self, model, api_key, temperature=0.0):
+        if not api_key:
+            raise ValueError("An Anthropic API key is required for Claude models.")
+        self.model = model
+        self.temperature = temperature
+        self.client = httpx.Client(
+            base_url="https://api.anthropic.com",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+            },
+            timeout=120.0,
+        )
+
+    def __call__(self, prompt, system_prompt=None, **kwargs):
+        payload = {
+            "model": self.model,
+            "max_tokens": 8192,
+            "temperature": self.temperature,
+            "messages": [{"role": "user", "content": str(prompt)}],
+        }
+        if system_prompt:
+            payload["system"] = str(system_prompt)
+        response = self.client.post("/v1/messages", json=payload)
+        response.raise_for_status()
+        return "".join(
+            block.get("text", "")
+            for block in response.json().get("content", [])
+            if block.get("type") == "text"
+        )
+
+
+class DeepSeekLLM:
+    """DeepSeek's OpenAI-compatible chat-completions API adapter."""
+
+    def __init__(self, model, api_key, temperature=0.0):
+        if not api_key:
+            raise ValueError("A DeepSeek API key is required for DeepSeek models.")
+        self.model = model
+        self.temperature = temperature
+        self.client = httpx.Client(
+            base_url="https://api.deepseek.com",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=120.0,
+        )
+
+    def __call__(self, prompt, system_prompt=None, **kwargs):
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": str(system_prompt)})
+        messages.append({"role": "user", "content": str(prompt)})
+        response = self.client.post(
+            "/chat/completions",
+            json={
+                "model": self.model,
+                "messages": messages,
+                "temperature": self.temperature,
+            },
+        )
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
+
+
+def create_llm_client(model, api_key=None, temperature=0.0):
+    """Create the correct LLM client from the central model configuration."""
+    provider = get_model_provider(model)
+    client_types = {
+        "google": GoogleGenerativeAI,
+        "ollama": OllamaLLM,
+        "anthropic": AnthropicLLM,
+        "deepseek": DeepSeekLLM,
+    }
+    try:
+        return client_types[provider](model=model, api_key=api_key, temperature=temperature)
+    except KeyError as exc:
+        raise ValueError(f"Unsupported provider '{provider}' configured for model '{model}'.") from exc

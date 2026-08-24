@@ -31,19 +31,12 @@ let datasetStatusInterval = null;
 let ragBuildStatusInterval = null;
 
 let defaultSettings = {};
-const MODELS = [
-  "gemma3:4b",
-  "gpt-oss:120b",
-  "gemini-2.5-pro",
-  "qwen3-coder-next",
-  "deepseek-v3.2",
-  "claude-sonnet-4-6",
-  "deepseek-v4-flash"
-];
+let models = [];
 
 function populateSelect(id) {
   const select = document.getElementById(id);
-  MODELS.forEach(m => {
+  select.replaceChildren();
+  models.forEach(m => {
     const opt = document.createElement("option");
     opt.value = opt.textContent = m;
     select.appendChild(opt);
@@ -69,7 +62,11 @@ async function fetchDefaultSettings() {
   const response = await fetch(`${BACKEND_URL}/api/defaults`);
   if (!response.ok) throw new Error('Unable to load schema defaults.');
 
-  const schemaDefaults = await response.json();
+  const { models: schemaModels, ...schemaDefaults } = await response.json();
+  if (!Array.isArray(schemaModels) || schemaModels.length === 0) {
+    throw new Error('The backend did not provide any supported models.');
+  }
+  models = schemaModels;
   defaultSettings = {
     ...schemaDefaults,
     // Optional Pydantic API-key defaults are null; form inputs use strings.
@@ -100,7 +97,7 @@ function validateImportedSettings(settings) {
 
   const { benchmark, darkTheme, ...currentSettings } = settings;
   const imported = { ...defaultSettings, ...currentSettings };
-  if (!MODELS.includes(imported.model) || !MODELS.includes(imported.textGradModel)) {
+  if (!models.includes(imported.model) || !models.includes(imported.textGradModel)) {
     throw new Error('The file contains a model that is not available in this version.');
   }
   if (!Number.isFinite(Number(imported.temperature)) || Number(imported.temperature) < 0 || Number(imported.temperature) > 1) {
@@ -128,13 +125,15 @@ function updateSliderValue() {
 }
 
 function populateForm(settings) {
-  modelSelect.value = settings.model || MODELS[0];
+  modelSelect.value = models.includes(settings.model) ? settings.model : (defaultSettings.model || models[0]);
   temperatureInput.value = settings.temperature ?? 0;
   updateSliderValue();
   apiKeyInput.value = settings.apiKey || '';
   includeRag.checked = settings.includeRag ?? false;
   includeTextGrad.checked = settings.includeTextGrad ?? false;
-  textGradModelSelect.value = settings.textGradModel || 'gemma3:4b';
+  textGradModelSelect.value = models.includes(settings.textGradModel)
+    ? settings.textGradModel
+    : (defaultSettings.textGradModel || models[0]);
   textGradApiKeyInput.value = settings.textGradApiKey || '';
   textGradLoopsInput.value = Math.min(5, Math.max(1, settings.textGradLoops || 1));
   systemPrompt.value = settings.systemPrompt || '';
@@ -344,12 +343,13 @@ settingsFileInput.addEventListener('change', async () => {
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
-  populateSelect("modelSelect");
-  populateSelect("textGradModelSelect");
   try {
     await fetchDefaultSettings();
+    populateSelect("modelSelect");
+    populateSelect("textGradModelSelect");
   } catch (error) {
     showStatus('Could not load defaults from the backend.');
+    return;
   }
   const settings = loadSettings();
   populateForm(settings);
