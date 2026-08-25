@@ -1,3 +1,4 @@
+import logging
 import random
 import time
 
@@ -5,6 +6,8 @@ import httpx
 from ollama import Client
 from google import genai
 from config.models import get_model_provider
+
+logger = logging.getLogger(__name__)
 
 class OllamaLLM:
     def __init__(self, model, host='https://ollama.com', api_key=None, temperature=0.0):
@@ -114,6 +117,7 @@ class DeepSeekLLM:
         if system_prompt:
             messages.append({"role": "system", "content": str(system_prompt)})
         messages.append({"role": "user", "content": str(prompt)})
+        logger.info("Calling DeepSeek API with requested model '%s'", self.model)
         response = self.client.post(
             "/chat/completions",
             json={
@@ -123,7 +127,14 @@ class DeepSeekLLM:
             },
         )
         response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        response_data = response.json()
+        returned_model = response_data.get("model", "unknown")
+        logger.info(
+            "DeepSeek API response model: requested='%s', returned='%s'",
+            self.model,
+            returned_model,
+        )
+        return response_data["choices"][0]["message"]["content"]
 
 
 def create_llm_client(model, api_key=None, temperature=0.0):

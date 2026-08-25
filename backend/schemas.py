@@ -60,12 +60,24 @@ def settings_defaults() -> dict:
     return {**Settings().model_dump(), "models": list(SUPPORTED_MODELS)}
 
 
+def validate_api_key_settings(settings: Settings) -> None:
+    """Reject runnable configurations that are missing required model keys."""
+    if settings.model != "mock-chat:1.0" and not (settings.apiKey or "").strip():
+        raise ValueError("API key is required for the selected primary model.")
+    if (
+        settings.includeTextGrad
+        and settings.textGradModel != "mock-chat:1.0"
+        and not (settings.textGradApiKey or "").strip()
+    ):
+        raise ValueError("API key is required for the selected TextGrad model.")
+
+
 class ChatRequest(BaseModel):
     message: str
     settings: Settings
 
 class BenchmarkRequest(BaseModel):
-    version: str = "release_v5"
+    version: str = "release_v6"
     n: int = 30
     difficulty: Optional[str] = None
     settings: Optional[Settings] = Field(default_factory=Settings)

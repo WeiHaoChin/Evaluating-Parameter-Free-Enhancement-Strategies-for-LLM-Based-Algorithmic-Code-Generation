@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Settings - FYP Chat UI</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260825" />
   </head>
   <body>
     <div class="app-shell">
@@ -49,10 +49,10 @@
             <p class="field-note">Required when using remote models like gemma3 or gpt-oss.</p>
           </div>
 
-          <div class="settings-section" id="textGradSystemPromptSection" style="display: none;">
+          <div class="settings-section" id="textGradSystemPromptSection">
             <label for="systemPrompt">System prompt for LLM</label>
             <textarea id="systemPrompt" rows="4">The explanation must be clear and beginner-friendly.</textarea>
-            <p class="field-note">Used as the system prompt when TextGrad evaluation is enabled.</p>
+            <p class="field-note">Used as the system prompt for the primary LLM, with or without TextGrad.</p>
           </div>
 
           <div class="settings-section">
@@ -69,6 +69,7 @@
               <p id="datasetStatus" class="field-note">Checking dataset availability...</p>
             </div>
             <select id="datasetVersionSelect" aria-label="LiveCodeBench dataset version">
+              <option value="release_v6">release_v6</option>
               <option value="release_v5">release_v5</option>
               <option value="release_v4">release_v4</option>
             </select>
@@ -143,7 +144,8 @@
       </main>
     </div>
 
-    <script src="page-transitions.js"></script>
-    <script src="settings.js"></script>
+    <script src="page-transitions.js?v=20260825"></script>
+    <script src="settings-store.js?v=20260825"></script>
+    <script src="settings.js?v=20260825"></script>
   </body>
 </html>

@@ -4,6 +4,8 @@ const messageInput = document.getElementById('messageInput');
 const settingsButton = document.getElementById('settingsButton');
 const newChatBtn = document.getElementById('newChatBtn');
 const backendStatus = document.getElementById('backendStatus');
+const BACKEND_URL = 'http://localhost:5050';
+const BACKEND_WS_URL = 'ws://localhost:5050';
 
 // WebSocket connection state
 let ws = null;
@@ -26,7 +28,7 @@ let defaultSettings = {
 // Fetch default settings from backend
 async function fetchDefaultSettings() {
   try {
-    const response = await fetch('http://localhost:5500/api/defaults');
+    const response = await fetch(`${BACKEND_URL}/api/defaults`);
     if (response.ok) {
       defaultSettings = await response.json();
       console.log('Default settings loaded from backend:', defaultSettings);
@@ -40,15 +42,7 @@ async function fetchDefaultSettings() {
 }
 
 function loadSavedSettings() {
-  const stored = sessionStorage.getItem('fyp_chat_settings');
-  if (!stored) return defaultSettings;
-  try {
-    const { benchmark, darkTheme, ...savedSettings } = JSON.parse(stored);
-    return { ...defaultSettings, ...savedSettings };
-  } catch (error) {
-    console.error('Failed to parse saved settings', error);
-    return defaultSettings;
-  }
+  return window.SettingsStore.load(defaultSettings, defaultSettings.models || []);
 }
 
 function loadCurrentChat() {
@@ -188,7 +182,12 @@ function addMessage(role, text) {
 }
 
 function saveSettings(settings) {
-  sessionStorage.setItem('fyp_chat_settings', JSON.stringify(settings));
+  return window.SettingsStore.save(
+    settings,
+    defaultSettings,
+    defaultSettings.models || [],
+    { requireApiKeys: true }
+  );
 }
 
 function setBackendStatus(connected) {
@@ -200,7 +199,7 @@ function setBackendStatus(connected) {
 async function checkBackendStatus() {
   if (!backendStatus) return;
   try {
-    const response = await fetch('http://localhost:5050/api/status');
+    const response = await fetch(`${BACKEND_URL}/api/status`);
     if (!response.ok) throw new Error('status ' + response.status);
     const data = await response.json();
     setBackendStatus(data.status === 'ok');
@@ -224,7 +223,7 @@ function initializeWebSocket() {
   }
   
   // Connect directly to Python backend
-  const wsUrl = 'ws://localhost:5050/ws/chat';
+  const wsUrl = `${BACKEND_WS_URL}/ws/chat`;
   console.log('Initializing WebSocket connection to:', wsUrl);
   
   ws = new WebSocket(wsUrl);
@@ -619,8 +618,15 @@ chatForm.addEventListener('submit', async (event) => {
     sendMessageWebSocket(text);
   } catch (error) {
     console.error('Error sending message:', error);
-    addMessage('assistant', `Error: ${error.message}. Make sure the Python backend is running on localhost:5500.`);
+    addMessage('assistant', `Error: ${error.message}. Make sure the Python backend is running on localhost:5050.`);
   }
+});
+
+messageInput.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+
+  event.preventDefault();
+  chatForm.requestSubmit();
 });
 
 if (settingsButton) {

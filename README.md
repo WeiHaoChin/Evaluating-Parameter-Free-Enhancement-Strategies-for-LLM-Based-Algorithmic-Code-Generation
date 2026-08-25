@@ -122,12 +122,12 @@ pip install -r requirements.txt
 Then start the backend:
 
 ```bash
-uvicorn backend.main:app --host 127.0.0.1 --port 5500 --reload
+uvicorn backend.main:app --host 127.0.0.1 --port 5050 --reload
 ```
 
 Open the app at:
 
-- http://127.0.0.1:5500/
+- http://127.0.0.1:5050/
 
 ### Optional: lightweight Node compatibility server
 
@@ -138,7 +138,7 @@ npm install
 npm start
 ```
 
-It serves the frontend on port 3000 and points to the Python backend on port 5500.
+It serves the frontend on port 3000 and points to the Python backend on port 5050.
 
 ## Docker
 
@@ -261,7 +261,7 @@ If you are working on the backend:
 
 ```bash
 cd backend
-uvicorn main:app --host 127.0.0.1 --port 5500 --reload
+uvicorn main:app --host 127.0.0.1 --port 5050 --reload
 ```
 
 If you are working on the UI only, you can open static files directly in `public/` or serve them through the Python app.

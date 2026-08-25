@@ -41,11 +41,11 @@ let readiness = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
-  await fetchDefaultSettings();
-  await refreshBenchmarkReadiness();
-  checkBackendStatus();
   setupEventListeners();
   linkSliderAndInput();
+  checkBackendStatus();
+  await fetchDefaultSettings();
+  await refreshBenchmarkReadiness();
 });
 
 function setupEventListeners() {
@@ -104,19 +104,25 @@ async function refreshBenchmarkReadiness() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ version, settings: loadSavedSettings() }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000),
     });
-    if (!response.ok) throw new Error('Unable to check benchmark setup');
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || `Readiness check failed (${response.status})`);
+    }
     readiness = await response.json();
     datasetAvailable = readiness.checks.dataset.ready;
     benchmarkReady = readiness.ready;
     renderReadiness(readiness);
     updateStartButton();
   } catch (error) {
+    console.error('Benchmark readiness check failed:', error);
     datasetAvailable = false;
     benchmarkReady = false;
     startBenchmarkBtn.disabled = true;
     startBenchmarkBtn.textContent = 'Setup status unavailable';
-    document.getElementById('readinessTitle').textContent = 'Unable to check setup';
+    document.getElementById('readinessTitle').textContent = `Unable to check setup: ${error.message}`;
   }
 }
 
@@ -131,7 +137,10 @@ function linkSliderAndInput() {
 
 async function fetchDefaultSettings() {
   try {
-    const response = await fetch(`${BACKEND_URL}/benchmark/defaults`);
+    const response = await fetch(`${BACKEND_URL}/benchmark/defaults`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000),
+    });
     if (response.ok) {
       defaultSettings = await response.json();
       console.log('Default settings loaded:', defaultSettings);
@@ -146,14 +155,8 @@ async function fetchDefaultSettings() {
 }
 
 function loadSavedSettings() {
-  const stored = sessionStorage.getItem('fyp_chat_settings');
-  if (!stored) return defaultSettings || {};
-  try {
-    return { ...defaultSettings, ...JSON.parse(stored) };
-  } catch (error) {
-    console.error('Failed to parse saved settings', error);
-    return defaultSettings || {};
-  }
+  const defaults = defaultSettings || {};
+  return window.SettingsStore.load(defaults, defaults.models || []);
 }
 
 async function checkBackendStatus() {

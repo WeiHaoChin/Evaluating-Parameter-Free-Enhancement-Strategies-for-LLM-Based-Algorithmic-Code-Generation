@@ -21,7 +21,7 @@ from rag_handler import (
     query_rag,
 )
 from routes.benchmark import router as benchmark_router
-from schemas import Settings, ChatRequest, settings_defaults
+from schemas import Settings, ChatRequest, settings_defaults, validate_api_key_settings
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -67,6 +67,16 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def disable_development_caching(request, call_next):
+    """Ensure mounted frontend changes are visible after an ordinary reload."""
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def _build_rag_prompt_for_chat(message: str, settings: Settings) -> tuple[str, str]:
@@ -100,6 +110,10 @@ def _build_rag_prompt_for_chat(message: str, settings: Settings) -> tuple[str, s
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     settings = request.settings
+    try:
+        validate_api_key_settings(settings)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     formatted_prompt, rag_context = _build_rag_prompt_for_chat(
         request.message, settings
     )
@@ -112,7 +126,7 @@ async def chat(request: ChatRequest):
                 loops=settings.textGradLoops,
                 model=settings.model,
                 textGradModel=settings.textGradModel,
-                api_key=settings.textGradApiKey,
+                api_key=settings.apiKey,
                 textGrad_api_key=settings.textGradApiKey,
                 loss_prompt=settings.textGradLossPrompt,
                 temperature=settings.temperature
@@ -220,9 +234,16 @@ async def websocket_chat(websocket: WebSocket):
     try:
         while True:
             data         = await websocket.receive_text()
-            message_data = json.loads(data)
-            message      = message_data.get("message", "")
-            settings     = Settings(**message_data.get("settings", {}))
+            try:
+                message_data = json.loads(data)
+                message = message_data.get("message", "")
+                settings = Settings(**message_data.get("settings", {}))
+                validate_api_key_settings(settings)
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                await websocket.send_text(
+                    json.dumps({"type": "error", "data": f"Invalid settings: {exc}"})
+                )
+                continue
 
             if not message:
                 await websocket.send_text(
@@ -299,4 +320,4 @@ app.mount("/", StaticFiles(directory="public", html=True), name="public")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=5500, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=5050, reload=True)

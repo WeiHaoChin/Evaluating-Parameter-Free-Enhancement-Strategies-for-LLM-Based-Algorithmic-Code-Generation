@@ -30,7 +30,7 @@ def decode_private_tests(raw):
         )
     
 def load_lcb_problems(
-    version: str = "release_v5", n: int = 30, difficulty: Optional[str] = None
+    version: str = "release_v6", n: int = 30, difficulty: Optional[str] = None
 ) -> list[dict]:
     """
     Load problems from the LiveCodeBench dataset.
@@ -41,7 +41,7 @@ def load_lcb_problems(
     every call.
 
     Args:
-        version: Dataset version (e.g., "release_v5")
+        version: Dataset version (e.g., "release_v6")
         n: Number of problems to load
         difficulty: Filter by difficulty ("easy", "medium", "hard", or None for all)
 

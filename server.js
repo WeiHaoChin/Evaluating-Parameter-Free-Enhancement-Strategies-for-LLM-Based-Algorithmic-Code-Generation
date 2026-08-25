@@ -12,7 +12,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // REST API endpoints (optional - kept for compatibility)
 app.post('/api/chat', (req, res) => {
   res.json({ 
-    message: 'Use WebSocket for streaming. Connect to ws://localhost:5500/ws/chat' 
+    message: 'Use WebSocket for streaming. Connect to ws://localhost:5050/ws/chat'
   });
 });
 
@@ -21,11 +21,11 @@ app.post('/api/settings', (req, res) => {
 });
 
 app.get('/api/status', async (req, res) => {
-  res.json({ status: 'ok', message: 'Use Python backend at localhost:5500' });
+  res.json({ status: 'ok', message: 'Use Python backend at localhost:5050' });
 });
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`Frontend served at http://localhost:${port}`);
-  console.log(`WebSocket and API: ws://localhost:5500/ws/chat and http://localhost:5500`);
+  console.log(`WebSocket and API: ws://localhost:5050/ws/chat and http://localhost:5050`);
 });

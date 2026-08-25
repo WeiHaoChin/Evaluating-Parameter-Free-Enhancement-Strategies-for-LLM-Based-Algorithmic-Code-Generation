@@ -12,7 +12,6 @@ const textGradApiKeyInput = document.getElementById('textGradApiKey');
 const textGradLoopsSection = document.getElementById('textGradLoopsSection');
 const textGradLoopsInput = document.getElementById('textGradLoops');
 const systemPrompt = document.getElementById('systemPrompt');
-const textGradSystemPromptSection = document.getElementById('textGradSystemPromptSection');
 const textGradLossPromptSection = document.getElementById('textGradLossPromptSection');
 const textGradLossPrompt = document.getElementById('textGradLossPrompt');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
@@ -44,18 +43,11 @@ function populateSelect(id) {
 }
 
 function loadSettings() {
-  const stored = sessionStorage.getItem('fyp_chat_settings');
-  if (!stored) return defaultSettings;
-  try {
-    const { benchmark, darkTheme, ...savedSettings } = JSON.parse(stored);
-    return { ...defaultSettings, ...savedSettings };
-  } catch {
-    return defaultSettings;
-  }
+  return window.SettingsStore.load(defaultSettings, models);
 }
 
-function saveSettings(settings) {
-  sessionStorage.setItem('fyp_chat_settings', JSON.stringify(settings));
+function saveSettings(settings, requireApiKeys = true) {
+  return window.SettingsStore.save(settings, defaultSettings, models, { requireApiKeys });
 }
 
 async function fetchDefaultSettings() {
@@ -91,33 +83,7 @@ function getSettingsFromForm() {
 }
 
 function validateImportedSettings(settings) {
-  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
-    throw new Error('The selected file does not contain settings.');
-  }
-
-  const { benchmark, darkTheme, ...currentSettings } = settings;
-  const imported = { ...defaultSettings, ...currentSettings };
-  if (!models.includes(imported.model) || !models.includes(imported.textGradModel)) {
-    throw new Error('The file contains a model that is not available in this version.');
-  }
-  if (!Number.isFinite(Number(imported.temperature)) || Number(imported.temperature) < 0 || Number(imported.temperature) > 1) {
-    throw new Error('The file contains an invalid temperature.');
-  }
-  if (!Number.isInteger(Number(imported.textGradLoops)) || Number(imported.textGradLoops) < 1 || Number(imported.textGradLoops) > 5) {
-    throw new Error('The file contains an invalid TextGrad loop count.');
-  }
-  for (const key of ['includeRag', 'includeTextGrad']) {
-    if (typeof imported[key] !== 'boolean') throw new Error(`The file contains an invalid ${key} value.`);
-  }
-  for (const key of ['systemPrompt', 'textGradLossPrompt', 'apiKey', 'textGradApiKey']) {
-    if (typeof imported[key] !== 'string') throw new Error(`The file contains an invalid ${key} value.`);
-  }
-
-  return {
-    ...imported,
-    temperature: Number(imported.temperature),
-    textGradLoops: Number(imported.textGradLoops),
-  };
+  return window.SettingsStore.normalize(settings, defaultSettings, models, { requireApiKeys: true });
 }
 
 function updateSliderValue() {
@@ -181,9 +147,8 @@ function updateTextGradApiKeyVisibility(textGradModel, includeTextGrad) {
 
 function updateTextGradVisibility(enabled) {
   textGradModelSection.style.display = enabled ? 'block' : 'none';
-  textGradApiKeySection.style.display = enabled ? 'block' : 'none';
+  updateTextGradApiKeyVisibility(textGradModelSelect.value, enabled);
   textGradLoopsSection.style.display = enabled ? 'block' : 'none';
-  textGradSystemPromptSection.style.display = enabled ? 'block' : 'none';
   textGradLossPromptSection.style.display = enabled ? 'block' : 'none';
   textGradLoopsInput.required = enabled;
 }
@@ -290,36 +255,37 @@ includeTextGrad.addEventListener('change', () => {
 });
 
 saveSettingsBtn.addEventListener('click', () => {
-  if (needsApiKey(modelSelect.value) && !apiKeyInput.value.trim()) {
-    showStatus('API key is required for the selected model.');
-    return;
+  try {
+    saveSettings(getSettingsFromForm());
+    showStatus('Settings saved locally.');
+  } catch (error) {
+    showStatus(`Could not save settings: ${error.message}`);
   }
-  if (needsTextGradApiKey(textGradModelSelect.value, includeTextGrad.checked) && !textGradApiKeyInput.value.trim()) {
-    showStatus('API key is required for the TextGrad model.');
-    return;
-  }
-
-  const newSettings = getSettingsFromForm();
-  saveSettings(newSettings);
-  showStatus('Settings saved locally.');
 });
 
 downloadSettingsBtn.addEventListener('click', () => {
-  const exportFile = {
-    format: 'fyp-chat-settings',
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    settings: getSettingsFromForm(),
-  };
-  const blob = new Blob([JSON.stringify(exportFile, null, 2)], { type: 'application/json' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `fyp-settings-${new Date().toISOString().slice(0, 10)}.json`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(link.href);
-  showStatus('Settings downloaded. Keep the file secure.');
+  try {
+    const validatedSettings = window.SettingsStore.normalize(
+      getSettingsFromForm(), defaultSettings, models, { requireApiKeys: true }
+    );
+    const exportFile = {
+      format: 'fyp-chat-settings',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      settings: validatedSettings,
+    };
+    const blob = new Blob([JSON.stringify(exportFile, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `fyp-settings-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+    showStatus('Settings downloaded. Keep the file secure.');
+  } catch (error) {
+    showStatus(`Could not download settings: ${error.message}`);
+  }
 });
 
 loadSettingsBtn.addEventListener('click', () => settingsFileInput.click());
@@ -331,6 +297,9 @@ settingsFileInput.addEventListener('change', async () => {
 
   try {
     const parsed = JSON.parse(await file.text());
+    if (parsed?.format === 'fyp-chat-settings' && parsed.version !== 1) {
+      throw new Error(`Unsupported settings file version: ${parsed.version}.`);
+    }
     const importedSettings = validateImportedSettings(
       parsed?.format === 'fyp-chat-settings' ? parsed.settings : parsed
     );

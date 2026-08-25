@@ -42,7 +42,7 @@ def reset_stop_flag() -> None:
 
 
 async def run_benchmark(
-    version: str = "release_v5", 
+    version: str = "release_v6",
     n: int = 30, 
     difficulty: Optional[str] = None,
     settings: Optional[Settings] = None
@@ -69,7 +69,11 @@ async def run_benchmark(
     benchmark_status["running"] = True
     benchmark_status["progress"] = 0
 
-    problems = load_lcb_problems(version=version, n=n, difficulty=difficulty)
+    # Loading a multi-gigabyte Arrow split is blocking work. Keep it off the
+    # FastAPI event loop so status/readiness endpoints remain responsive.
+    problems = await asyncio.to_thread(
+        load_lcb_problems, version=version, n=n, difficulty=difficulty
+    )
     benchmark_status["total"] = len(problems)
 
     all_results = []

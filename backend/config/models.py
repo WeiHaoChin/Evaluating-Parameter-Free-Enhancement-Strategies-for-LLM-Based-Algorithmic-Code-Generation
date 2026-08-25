@@ -4,7 +4,7 @@ MODEL_CONFIG = {
     "gemma3:4b": {"provider": "ollama"},
     "gpt-oss:120b": {"provider": "ollama"},
     "gemini-2.5-pro": {"provider": "google"},
-    "qwen3": {"provider": "ollama"},
+    "qwen3:latest": {"provider": "ollama"},
     "deepseek-v3.2": {"provider": "deepseek"},
     "claude-sonnet-4-6": {"provider": "anthropic"},
     "deepseek-v4-flash": {"provider": "deepseek"},

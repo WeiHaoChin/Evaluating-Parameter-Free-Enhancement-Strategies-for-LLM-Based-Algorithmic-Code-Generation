@@ -13,7 +13,7 @@ router = APIRouter(prefix="/benchmark", tags=["benchmark"])
 _download_status = {"running": False, "version": None, "error": None}
 
 
-def dataset_status(version: str = "release_v5") -> dict:
+def dataset_status(version: str = "release_v6") -> dict:
     downloading_this_version = (
         _download_status["running"] and _download_status["version"] == version
     )
@@ -38,7 +38,7 @@ async def _prefetch_dataset(version: str) -> None:
 
 
 @router.get("/dataset/status")
-async def get_dataset_status(version: str = "release_v5") -> dict:
+async def get_dataset_status(version: str = "release_v6") -> dict:
     return dataset_status(version)
 
 
@@ -83,7 +83,7 @@ async def get_benchmark_readiness(request: BenchmarkRequest) -> dict:
 
 
 @router.post("/dataset/download")
-async def download_dataset(version: str = "release_v5") -> dict:
+async def download_dataset(version: str = "release_v6") -> dict:
     if _download_status["running"] or is_prefetched(version):
         return dataset_status(version)
 
