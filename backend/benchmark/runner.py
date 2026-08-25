@@ -21,12 +21,26 @@ benchmark_status = {
     "total": 0,
     "current_problem": "",
     "stop_requested": False,
+    "modes": {},
 }
 
 
 def get_status() -> dict:
     """Get current benchmark status."""
-    return benchmark_status.copy()
+    status = benchmark_status.copy()
+    status["modes"] = {
+        label: mode.copy() for label, mode in benchmark_status.get("modes", {}).items()
+    }
+    return status
+
+
+def _fresh_mode_statuses() -> dict:
+    return {
+        mode["label"]: {
+            "label": mode["label"], "state": "pending", "detail": "Waiting to start",
+        }
+        for mode in MODES
+    }
 
 
 def request_stop() -> None:
@@ -69,6 +83,8 @@ async def run_benchmark(
     reset_stop_flag()
     benchmark_status["running"] = True
     benchmark_status["progress"] = 0
+    benchmark_status["current_problem"] = "Loading dataset..."
+    benchmark_status["modes"] = _fresh_mode_statuses()
 
     # Loading a multi-gigabyte Arrow split is blocking work. Keep it off the
     # FastAPI event loop so status/readiness endpoints remain responsive.
@@ -99,7 +115,8 @@ async def run_benchmark(
             }
 
         benchmark_status["current_problem"] = problem["title"]
-        benchmark_status["progress"] = problem_idx + 1
+        benchmark_status["progress"] = problem_idx
+        benchmark_status["modes"] = _fresh_mode_statuses()
 
         problem_results = {
             "problem": problem,
@@ -109,6 +126,10 @@ async def run_benchmark(
         async def run_mode(mode: dict, initial_response: Optional[str] = None) -> tuple[str, dict]:
             """Run one blocking solver invocation in a worker thread."""
             mode_label = mode["label"]
+            def report(state: str, detail: str) -> None:
+                benchmark_status["modes"][mode_label].update({
+                    "state": state, "detail": detail,
+                })
             try:
                 start_time = time.time()
                 response = await asyncio.to_thread(
@@ -127,6 +148,7 @@ async def run_benchmark(
                     starter_code=problem.get("starter_code"),
                     rag_context_cache=rag_context_cache,
                     initial_response=initial_response,
+                    progress_callback=report,
                 )
                 latency = (time.time() - start_time) * 1000
 
@@ -135,6 +157,7 @@ async def run_benchmark(
                     "latency_ms": latency,
                     "textgrad_included": mode["textgrad"],
                 }
+                report("complete", "Completed")
             except Exception as e:
                 mode_result = {
                     "response": None,
@@ -146,6 +169,7 @@ async def run_benchmark(
                     "textgrad_included": mode["textgrad"],
                     "exception": str(e),
                 }
+                report("error", str(e))
             return mode_label, mode_result
 
         # The independent initial generations start together. They are then
@@ -167,6 +191,7 @@ async def run_benchmark(
         problem_results["modes"].update(dict(refined_modes))
 
         all_results.append(problem_results)
+        benchmark_status["progress"] = problem_idx + 1
         await asyncio.sleep(0)
 
     summary = compute_metrics(all_results)

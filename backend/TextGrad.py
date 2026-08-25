@@ -33,7 +33,7 @@ def create_textgrad_model(textGradModel, model, system_prompt, api_key=None, tex
     return tg.BlackboxLLM(llm, system_prompt=system_prompt), feedback_llm
 
 
-def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None,textGrad_api_key=None,temperature=0.0, initial_answer=None):
+def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None,textGrad_api_key=None,temperature=0.0, initial_answer=None, progress_callback=None):
     """Generator version that yields events for streaming."""
     loops = max(1, min(int(loops), 5))
     if loops < 1:
@@ -46,6 +46,8 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
 
     answer_text = ''
     for loop_idx in range(loops):
+        if progress_callback:
+            progress_callback("generating", f"Generating answer (iteration {loop_idx + 1}/{loops})")
         # Send iteration start event with original prompt
         yield {
             'type': 'iteration_start',
@@ -83,6 +85,8 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
         }
 
         # Get critic feedback (loss)
+        if progress_callback:
+            progress_callback("getting_feedback", f"Getting feedback (iteration {loop_idx + 1}/{loops})")
         loss_fn = tg.TextLoss(loss_prompt, engine=feedback_llm)
         loss = loss_fn(answer)
         critic_response = str(loss)
@@ -97,6 +101,8 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
         }
 
         # Optimize
+        if progress_callback:
+            progress_callback("optimizing", f"Applying feedback (iteration {loop_idx + 1}/{loops})")
         loss.backward(engine=feedback_llm)
         optimizer.step()
         
@@ -118,6 +124,8 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
         }
     # print(f"Updated System Prompt: {system_prompt_var.value}\n")
     # print(f"Textgrad model parameters: {textgrad_model.parameters()}\n")
+    if progress_callback:
+        progress_callback("generating", "Generating final improved answer")
     final_answer = textgrad_model(prompt)
     answer_text = final_answer.value
     print(f"Final Updated Answer from textgrad loop: {answer_text}\n")
@@ -128,10 +136,10 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
     }
 
 
-def run_textgrad_sync(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None, textGrad_api_key=None, temperature=0.0, initial_answer=None):
+def run_textgrad_sync(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None, textGrad_api_key=None, temperature=0.0, initial_answer=None, progress_callback=None):
     """Synchronous version that collects all events and returns final answer (for backward compatibility)."""
     answer_text = ''
-    for event in run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops, api_key, textGrad_api_key, temperature, initial_answer):
+    for event in run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops, api_key, textGrad_api_key, temperature, initial_answer, progress_callback):
         if event['type'] == 'complete':
             answer_text = event['answer']
     return answer_text

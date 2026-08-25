@@ -5,7 +5,7 @@ import logging
 import re
 import sys
 import time
-from typing import MutableMapping, Optional
+from typing import Callable, MutableMapping, Optional
 import threading
 
 from TextGrad import run_textgrad_sync
@@ -191,6 +191,7 @@ def run_pipeline(
     starter_code: Optional[str] = None,
     rag_context_cache: Optional[MutableMapping[str, str]] = None,
     initial_response: Optional[str] = None,
+    progress_callback: Optional[Callable[[str, str], None]] = None,
 ) -> dict:
     """
     Full CP solver pipeline.
@@ -204,12 +205,17 @@ def run_pipeline(
     """
     start = time.time()
 
+    def report(state: str, detail: str) -> None:
+        if progress_callback:
+            progress_callback(state, detail)
+
     formatted_prompt = build_task_prompt(problem, starter_code)
 
     # ── Step 1: RAG augmentation ───────────────────────────────────────────────
     rag_context      = ""
 
     if rag:
+        report("retrieving", "Retrieving relevant RAG context")
         if is_rag_available():
             try:
                 if rag_context_cache is not None and problem in rag_context_cache:
@@ -250,6 +256,7 @@ def run_pipeline(
                 loss_prompt=textgrad_loss_prompt,
                 temperature=temperature,
                 initial_answer=initial_response,
+                progress_callback=progress_callback,
             )
         except Exception as e:
             logger.error(f"TextGrad failed: {e}", exc_info=True)
@@ -257,6 +264,7 @@ def run_pipeline(
 
     else:
         logger.info(f"Calling LLM directly (model={model})...")
+        report("generating", "Generating solution")
         try:
             response = call_llm(
                 message=formatted_prompt,
@@ -277,6 +285,7 @@ def run_pipeline(
     evaluation_sample = [evaluation_sample] # evaluation_sample passed into run_pipeline
     generated_code_snippets = [[extract_code(response)]]
 
+    report("judging", "Running generated code against test cases")
     metrics, results, final_metadata = codegen_metrics(
         evaluation_sample,
         generated_code_snippets,

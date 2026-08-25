@@ -16,6 +16,7 @@ const currentProblem = document.getElementById('currentProblem');
 const progressText = document.getElementById('progressText');
 const progressFill = document.getElementById('progressFill');
 const timeElapsed = document.getElementById('timeElapsed');
+const modeStatusCards = document.querySelectorAll('.mode-status-card');
 const backendStatus = document.getElementById('backendStatus');
 const overallMetrics = document.getElementById('overallMetrics');
 const difficultyMetrics = document.getElementById('difficultyMetrics');
@@ -306,6 +307,22 @@ function updateProgressUI(status) {
 
   const elapsed = Math.floor((Date.now() - benchmarkStartTime) / 1000);
   timeElapsed.textContent = `Time elapsed: ${formatSeconds(elapsed)}`;
+
+  modeStatusCards.forEach(card => {
+    const mode = status.modes?.[card.dataset.mode] || {
+      state: 'pending', detail: status.running ? 'Waiting to start' : 'Not running'
+    };
+    const badge = card.querySelector('.mode-status-badge');
+    const detail = card.querySelector('.mode-status-detail');
+    const labels = {
+      pending: 'Waiting', retrieving: 'Retrieving', generating: 'Generating',
+      getting_feedback: 'Feedback', optimizing: 'Optimizing', judging: 'Judging',
+      complete: 'Complete', error: 'Failed'
+    };
+    card.dataset.state = mode.state || 'pending';
+    badge.textContent = labels[mode.state] || mode.state || 'Waiting';
+    detail.textContent = mode.detail || '';
+  });
 }
 
 async function loadResults() {
