@@ -10,27 +10,48 @@ from rag_handler import is_rag_available
 
 router = APIRouter(prefix="/benchmark", tags=["benchmark"])
 
-_download_status = {"running": False, "version": None, "error": None}
+_download_status = {
+    "running": False, "version": None, "error": None, "percent": 0,
+    "completed_files": 0, "total_files": 0, "downloaded_bytes": 0,
+    "total_bytes": 0, "message": "",
+}
 
 
 def dataset_status(version: str = "release_v6") -> dict:
     downloading_this_version = (
         _download_status["running"] and _download_status["version"] == version
     )
+    available = False if downloading_this_version else is_prefetched(version)
+    progress = {key: _download_status[key] for key in (
+        "percent", "completed_files", "total_files", "downloaded_bytes",
+        "total_bytes", "message",
+    )}
+    if available:
+        progress.update({"percent": 100, "message": "Dataset downloaded and ready."})
     return {
         "version": version,
         # Avoid competing with Hugging Face's cache lock while a download runs.
-        "available": False if downloading_this_version else is_prefetched(version),
+        "available": available,
         "downloading": downloading_this_version,
         "download_version": _download_status["version"],
         "error": _download_status["error"],
+        **progress,
     }
 
 
 async def _prefetch_dataset(version: str) -> None:
+    def report(completed: int, total: int, downloaded: int, total_bytes: int) -> None:
+        percent = round((completed / total) * 100) if total else 0
+        _download_status.update({
+            "completed_files": completed, "total_files": total,
+            "downloaded_bytes": downloaded, "total_bytes": total_bytes,
+            "percent": percent,
+            "message": f"Downloaded {completed} of {total} Parquet shards.",
+        })
     try:
-        await asyncio.to_thread(prefetch, version)
+        await asyncio.to_thread(prefetch, version, report)
         _download_status["error"] = None
+        _download_status.update({"percent": 100, "message": "Dataset downloaded and ready."})
     except Exception as exc:
         _download_status["error"] = str(exc)
     finally:
@@ -87,7 +108,11 @@ async def download_dataset(version: str = "release_v6") -> dict:
     if _download_status["running"] or is_prefetched(version):
         return dataset_status(version)
 
-    _download_status.update({"running": True, "version": version, "error": None})
+    _download_status.update({
+        "running": True, "version": version, "error": None, "percent": 0,
+        "completed_files": 0, "total_files": 0, "downloaded_bytes": 0,
+        "total_bytes": 0, "message": "Discovering Parquet shards...",
+    })
     asyncio.create_task(_prefetch_dataset(version))
     return dataset_status(version)
 
@@ -119,6 +144,7 @@ async def start_benchmark(
             version=request.version,
             n=request.n,
             difficulty=request.difficulty,
+            seed=request.seed,
             settings=request.settings,
         )
         settings = request.settings or Settings()
@@ -130,6 +156,7 @@ async def start_benchmark(
         "status": "started",
         "n_problems": request.n,
         "version": request.version,
+        "seed": request.seed,
         "settings": request.settings.dict() if request.settings else Settings().dict(),
     }
 

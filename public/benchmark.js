@@ -11,6 +11,7 @@ const versionSelect = document.getElementById('versionSelect');
 const problemCount = document.getElementById('problemCount');
 const problemCountSlider = document.getElementById('problemCountSlider');
 const difficultySelect = document.getElementById('difficultySelect');
+const randomSeed = document.getElementById('randomSeed');
 const currentProblem = document.getElementById('currentProblem');
 const progressText = document.getElementById('progressText');
 const progressFill = document.getElementById('progressFill');
@@ -194,12 +195,17 @@ async function startBenchmark() {
   const n = parseInt(problemCount.value) || 10;
   const version = versionSelect.value;
   const difficulty = difficultySelect.value || null;
+  const seed = Number(randomSeed.value);
   const settings = loadSavedSettings();
   console.log('Settings being sent:', settings);  // add this
   console.log('Model:', settings.model);           // add this
 
   if (n < 1 || n > 100) {
     showAlert('Problem count must be between 1 and 100', 'error');
+    return;
+  }
+  if (!Number.isSafeInteger(seed)) {
+    showAlert('Sampling seed must be an integer', 'error');
     return;
   }
 
@@ -216,6 +222,7 @@ async function startBenchmark() {
         version,
         n,
         difficulty,
+        seed,
         settings,
       }),
     });

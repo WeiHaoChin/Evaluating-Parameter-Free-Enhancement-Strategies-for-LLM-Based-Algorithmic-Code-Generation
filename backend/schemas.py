@@ -80,4 +80,5 @@ class BenchmarkRequest(BaseModel):
     version: str = "release_v6"
     n: int = 30
     difficulty: Optional[str] = None
+    seed: int = 42
     settings: Optional[Settings] = Field(default_factory=Settings)

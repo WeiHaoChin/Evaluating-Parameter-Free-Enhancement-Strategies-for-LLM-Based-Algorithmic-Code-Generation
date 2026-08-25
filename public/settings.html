@@ -19,7 +19,7 @@
             <div class="brand-subtitle">Settings</div>
           </div>
         </div>
-        <button id="backToChat" class="new-chat-btn">â† Back to chat</button>
+        <button id="backToChat" class="new-chat-btn">Back to chat</button>
         <nav class="sidebar-menu">
           <a class="sidebar-item" href="index.html">Home</a>
           <a class="sidebar-item" href="examples.html">Examples</a>
@@ -74,6 +74,15 @@
               <option value="release_v4">release_v4</option>
             </select>
             <button id="downloadDatasetBtn" class="primary-button" type="button">Download dataset</button>
+            <div id="datasetProgress" class="task-progress" hidden>
+              <div class="task-progress-header">
+                <span id="datasetProgressLabel">Preparing download...</span>
+                <span id="datasetProgressPercent">0%</span>
+              </div>
+              <div class="task-progress-track" role="progressbar" aria-label="Dataset download progress" aria-valuemin="0" aria-valuemax="100">
+                <div id="datasetProgressFill" class="task-progress-fill"></div>
+              </div>
+            </div>
             <p class="field-note">Downloads the selected version from Hugging Face. Benchmarks remain unavailable until the download completes.</p>
           </div>
 
@@ -83,6 +92,17 @@
               <p id="ragBuildStatus" class="field-note">Create chunks from the scraped RAG data and rebuild the local search index.</p>
             </div>
             <button id="buildRagBtn" class="primary-button" type="button">Create RAG chunks</button>
+            <div id="ragProgress" class="task-progress" hidden>
+              <div class="task-progress-header">
+                <span id="ragProgressLabel">Preparing pipeline...</span>
+                <span id="ragProgressPercent">0%</span>
+              </div>
+              <div class="task-progress-track" role="progressbar" aria-label="RAG generation progress" aria-valuemin="0" aria-valuemax="100">
+                <div id="ragProgressFill" class="task-progress-fill"></div>
+              </div>
+              <pre id="ragProgressLog" class="task-progress-log" hidden></pre>
+            </div>
+            <p class="field-note">Runs every scraper, then cleans, chunks, embeds, and replaces the RAG search index.</p>
           </div>
 
           <div class="settings-section switch-row">

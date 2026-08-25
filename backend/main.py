@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import re
 from pathlib import Path
 import sys
 from contextlib import asynccontextmanager
@@ -31,9 +32,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-RAG_PIPELINE_PATH = Path(__file__).parent / "RAG" / "pipeline" / "rag_pipeline.py"
+RAG_PIPELINE_PATH = Path(__file__).parent / "RAG" / "main.py"
 RAG_DATA_ROOT = Path(__file__).parent / "data"
-_rag_build_status = {"running": False, "error": None, "output": ""}
+_rag_build_status = {
+    "running": False, "error": None, "output": "", "percent": 0,
+    "stage": "idle", "message": "Ready to build the RAG knowledge base.",
+}
 _rag_build_task: Optional[asyncio.Task] = None
 
 
@@ -161,8 +165,34 @@ async def status():
     return {"status": "ok", "backend": "available"}
 
 
+def _record_rag_progress(line: str) -> None:
+    """Convert orchestrator output into a stable progress payload for the UI."""
+    output = (_rag_build_status["output"] + line)[-12000:]
+    _rag_build_status["output"] = output
+    stages = (
+        ("SCRAPER: Codeforces", 5, "codeforces", "Scraping Codeforces editorials..."),
+        ("SCRAPER: USACO", 18, "usaco", "Scraping USACO solutions..."),
+        ("SCRAPER: AtCoder", 31, "atcoder", "Scraping AtCoder editorials..."),
+        ("SCRAPER: CP-Algorithms", 44, "cp_algorithms", "Scraping CP-Algorithms..."),
+        ("SCRAPER: CPH Book", 57, "cph", "Extracting the Competitive Programmer's Handbook..."),
+        ("PIPELINE: Chunking & Indexing", 70, "chunking", "Cleaning and chunking scraped content..."),
+    )
+    for marker, percent, stage, message in stages:
+        if marker in line:
+            _rag_build_status.update({"percent": percent, "stage": stage, "message": message})
+            return
+    match = re.search(r"ChromaDB:\s*(\d+)/(\d+) chunks ingested", line)
+    if match:
+        completed, total = map(int, match.groups())
+        percent = 75 + round(24 * completed / total) if total else 75
+        _rag_build_status.update({
+            "percent": min(percent, 99), "stage": "indexing",
+            "message": f"Indexing chunks in ChromaDB ({completed}/{total})...",
+        })
+
+
 async def _build_rag_chunks() -> None:
-    """Run the chunking pipeline and reconnect the in-process RAG client."""
+    """Run all scrapers, chunk/index their output, and reconnect RAG."""
     global _rag_build_task
     command = [
         sys.executable,
@@ -178,17 +208,31 @@ async def _build_rag_chunks() -> None:
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(Path(__file__).parent.parent),
         )
-        output, _ = await process.communicate()
-        log_output = output.decode("utf-8", errors="replace")[-4000:]
-        _rag_build_status["output"] = log_output
+        assert process.stdout is not None
+        while True:
+            raw_line = await process.stdout.readline()
+            if not raw_line:
+                break
+            line = raw_line.decode("utf-8", errors="replace")
+            _record_rag_progress(line)
+            logger.info("RAG build: %s", line.rstrip())
+        await process.wait()
         if process.returncode != 0:
             raise RuntimeError(f"RAG pipeline exited with code {process.returncode}.")
 
+        _rag_build_status.update({
+            "percent": 99, "stage": "loading",
+            "message": "Reloading the completed RAG index...",
+        })
         if not initialize_rag(embedder="local", local_model="BAAI/bge-small-en-v1.5"):
             raise RuntimeError("Chunks were created, but the RAG database could not be reloaded.")
+        _rag_build_status.update({
+            "percent": 100, "stage": "complete",
+            "message": "RAG knowledge base is ready.",
+        })
     except Exception as exc:
         logger.exception("RAG chunk build failed")
-        _rag_build_status["error"] = str(exc)
+        _rag_build_status.update({"error": str(exc), "stage": "failed", "message": str(exc)})
     finally:
         _rag_build_status["running"] = False
         _rag_build_task = None
@@ -196,19 +240,16 @@ async def _build_rag_chunks() -> None:
 
 @app.post("/api/rag/build")
 async def build_rag_chunks():
-    """Create RAG chunks when no chunks have already been indexed."""
+    """Rebuild RAG chunks, replacing the existing vector collection."""
     global _rag_build_task
     if _rag_build_status["running"]:
         raise HTTPException(status_code=409, detail="RAG chunk creation is already running.")
-    if get_rag_chunk_count() > 0:
-        raise HTTPException(
-            status_code=409,
-            detail="RAG chunks already exist. Existing chunks cannot be recreated from Settings.",
-        )
-
-    _rag_build_status.update({"running": True, "error": None, "output": ""})
+    _rag_build_status.update({
+        "running": True, "error": None, "output": "", "percent": 1,
+        "stage": "starting", "message": "Starting the full RAG pipeline...",
+    })
     _rag_build_task = asyncio.create_task(_build_rag_chunks())
-    return {"started": True}
+    return {"started": True, "mode": "replace"}
 
 
 @app.get("/api/rag/build/status")

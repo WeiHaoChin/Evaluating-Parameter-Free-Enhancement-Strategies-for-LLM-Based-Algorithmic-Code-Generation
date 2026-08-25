@@ -7,6 +7,7 @@ Embedding: OpenAI text-embedding-3-small (best cost/quality ratio) or local via 
 """
 
 import json
+import hashlib
 import logging
 import re
 import uuid
@@ -587,9 +588,32 @@ class RAGPipeline:
                         f"Error processing {source} doc "
                         f"{doc.get('problem_id', doc.get('article_id', '?'))}: {e}"
                     )
-        logger.info(f"Total chunks generated: {len(all_chunks)}")
-        logger.info(f"  Breakdown: {self._chunk_stats(all_chunks)}")
-        return all_chunks
+        generated_count = len(all_chunks)
+        unique_chunks: dict[str, Chunk] = {}
+        for chunk in all_chunks:
+            # Preserve indentation while normalizing line endings and trailing
+            # whitespace for stable exact-duplicate detection.
+            normalized_text = "\n".join(
+                line.rstrip() for line in chunk.text.replace("\r\n", "\n").split("\n")
+            ).strip()
+            if not normalized_text:
+                continue
+            text_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
+            if text_hash in unique_chunks:
+                continue
+            chunk.text = normalized_text
+            chunk.chunk_id = text_hash
+            unique_chunks[text_hash] = chunk
+
+        deduplicated_chunks = list(unique_chunks.values())
+        logger.info(
+            "Generated %s chunks; retained %s unique chunks (%s duplicates removed)",
+            generated_count,
+            len(deduplicated_chunks),
+            generated_count - len(deduplicated_chunks),
+        )
+        logger.info(f"  Breakdown: {self._chunk_stats(deduplicated_chunks)}")
+        return deduplicated_chunks
 
     def _chunk_stats(self, chunks: list[Chunk]) -> str:
         from collections import Counter
@@ -651,7 +675,14 @@ class RAGPipeline:
             )
             logger.info("ChromaDB using OpenAI embedder: text-embedding-3-small")
 
-        collection = client.get_or_create_collection(
+        # Rebuilding replaces the old index instead of appending to it.
+        try:
+            client.delete_collection(name=self.collection_name)
+            logger.info("Deleted existing ChromaDB collection '%s'", self.collection_name)
+        except chromadb.errors.NotFoundError:
+            pass
+
+        collection = client.create_collection(
             name=self.collection_name,
             embedding_function=embedding_fn,
             metadata={"hnsw:space": "cosine"},
@@ -797,9 +828,9 @@ Local model alternatives (pass via --local-model):
   thenlper/gte-large        1024-dim near-OpenAI quality, needs GPU
 
 Examples:
-  python pipeline/rag_pipeline.py --embedder local --vector-db chroma
-  python pipeline/rag_pipeline.py --embedder openai --vector-db qdrant --qdrant-url http://localhost:6333
-  python pipeline/rag_pipeline.py --embedder local --vector-db qdrant \\
+  python backend/RAG/pipeline/rag_pipeline.py --data-root backend/data --embedder local --vector-db chroma
+  python backend/RAG/pipeline/rag_pipeline.py --embedder openai --vector-db qdrant --qdrant-url http://localhost:6333
+  python backend/RAG/pipeline/rag_pipeline.py --embedder local --vector-db qdrant \\
       --qdrant-url https://xyz.qdrant.io --qdrant-api-key YOUR_KEY
         """
     )

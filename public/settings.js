@@ -25,12 +25,56 @@ const datasetStatus = document.getElementById('datasetStatus');
 const datasetVersionSelect = document.getElementById('datasetVersionSelect');
 const buildRagBtn = document.getElementById('buildRagBtn');
 const ragBuildStatus = document.getElementById('ragBuildStatus');
+const datasetProgress = document.getElementById('datasetProgress');
+const datasetProgressLabel = document.getElementById('datasetProgressLabel');
+const datasetProgressPercent = document.getElementById('datasetProgressPercent');
+const datasetProgressFill = document.getElementById('datasetProgressFill');
+const ragProgress = document.getElementById('ragProgress');
+const ragProgressLabel = document.getElementById('ragProgressLabel');
+const ragProgressPercent = document.getElementById('ragProgressPercent');
+const ragProgressFill = document.getElementById('ragProgressFill');
+const ragProgressLog = document.getElementById('ragProgressLog');
 const BACKEND_URL = 'http://localhost:5050';
 let datasetStatusInterval = null;
 let ragBuildStatusInterval = null;
 
 let defaultSettings = {};
 let models = [];
+
+function setProgress(container, fill, percentNode, labelNode, percent, label) {
+  const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+  container.hidden = false;
+  fill.style.width = `${safePercent}%`;
+  percentNode.textContent = `${safePercent}%`;
+  labelNode.textContent = label;
+  fill.parentElement.setAttribute('aria-valuenow', safePercent);
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 MB';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const unit = Math.min(Math.floor(Math.log(bytes) / Math.log(1000)), units.length - 1);
+  return `${(bytes / (1000 ** unit)).toFixed(unit >= 3 ? 2 : 0)} ${units[unit]}`;
+}
+
+function startPolling(kind) {
+  if (kind === 'dataset' && !datasetStatusInterval) {
+    datasetStatusInterval = setInterval(refreshDatasetStatus, 1000);
+  }
+  if (kind === 'rag' && !ragBuildStatusInterval) {
+    ragBuildStatusInterval = setInterval(refreshRagBuildStatus, 1000);
+  }
+}
+
+function stopPolling(kind) {
+  if (kind === 'dataset') {
+    clearInterval(datasetStatusInterval);
+    datasetStatusInterval = null;
+  } else {
+    clearInterval(ragBuildStatusInterval);
+    ragBuildStatusInterval = null;
+  }
+}
 
 function populateSelect(id) {
   const select = document.getElementById(id);
@@ -159,16 +203,31 @@ async function refreshRagBuildStatus() {
     if (!response.ok) throw new Error('Unable to check RAG build status');
     const status = await response.json();
     if (status.running) {
-      ragBuildStatus.textContent = 'Creating RAG chunks and rebuilding the search index. This may take several minutes...';
+      ragBuildStatus.textContent = status.message || 'Running the full RAG pipeline...';
       buildRagBtn.disabled = true;
-      buildRagBtn.textContent = 'Creating chunks...';
+      buildRagBtn.textContent = 'Generating RAG...';
+      setProgress(ragProgress, ragProgressFill, ragProgressPercent, ragProgressLabel,
+        status.percent, status.message || status.stage);
+      if (status.output) {
+        ragProgressLog.hidden = false;
+        ragProgressLog.textContent = status.output;
+        ragProgressLog.scrollTop = ragProgressLog.scrollHeight;
+      }
+      startPolling('rag');
       return;
     }
-    clearInterval(ragBuildStatusInterval);
+    stopPolling('rag');
+    if (status.percent || status.error) {
+      setProgress(ragProgress, ragProgressFill, ragProgressPercent, ragProgressLabel,
+        status.percent, status.error ? `Failed: ${status.error}` : (status.message || 'Complete'));
+    }
     if (status.chunks_exist) {
-      buildRagBtn.disabled = true;
-      buildRagBtn.textContent = 'RAG chunks already exist';
-      ragBuildStatus.textContent = `${status.chunk_count} RAG chunks already exist and are ready to use.`;
+      buildRagBtn.disabled = false;
+      buildRagBtn.textContent = 'Rebuild RAG index';
+      ragBuildStatus.textContent = `${status.chunk_count} RAG chunks are ready. Rebuilding replaces the existing index.`;
+      if (status.stage === 'complete') {
+        setProgress(ragProgress, ragProgressFill, ragProgressPercent, ragProgressLabel, 100, 'RAG knowledge base is ready.');
+      }
       return;
     }
     buildRagBtn.disabled = false;
@@ -194,12 +253,20 @@ async function refreshDatasetStatus() {
       datasetStatus.textContent = 'Downloaded and ready for benchmarks.';
       downloadDatasetBtn.disabled = true;
       downloadDatasetBtn.textContent = 'Dataset downloaded';
-      clearInterval(datasetStatusInterval);
+      setProgress(datasetProgress, datasetProgressFill, datasetProgressPercent, datasetProgressLabel, 100, 'Dataset downloaded and ready.');
+      stopPolling('dataset');
     } else if (status.downloading) {
-      datasetStatus.textContent = 'Downloading from Hugging Face. This may take a few minutes...';
+      const sizeDetail = status.total_bytes
+        ? ` ${formatBytes(status.downloaded_bytes)} / ${formatBytes(status.total_bytes)}`
+        : '';
+      datasetStatus.textContent = `${status.message || 'Downloading Parquet shards...'}${sizeDetail}`;
       downloadDatasetBtn.disabled = true;
       downloadDatasetBtn.textContent = 'Downloading...';
+      setProgress(datasetProgress, datasetProgressFill, datasetProgressPercent, datasetProgressLabel,
+        status.percent, status.message || 'Preparing download...');
+      startPolling('dataset');
     } else {
+      stopPolling('dataset');
       datasetStatus.textContent = status.error
         ? `Download failed: ${status.error}`
         : 'Not downloaded. Download it before running a benchmark.';
@@ -220,8 +287,7 @@ downloadDatasetBtn.addEventListener('click', async () => {
     const response = await fetch(`${BACKEND_URL}/benchmark/dataset/download?version=${encodeURIComponent(version)}`, { method: 'POST' });
     if (!response.ok) throw new Error('Could not start the download');
     await refreshDatasetStatus();
-    clearInterval(datasetStatusInterval);
-    datasetStatusInterval = setInterval(refreshDatasetStatus, 2000);
+    startPolling('dataset');
   } catch (error) {
     datasetStatus.textContent = error.message;
     downloadDatasetBtn.disabled = false;
@@ -229,7 +295,11 @@ downloadDatasetBtn.addEventListener('click', async () => {
   }
 });
 
-datasetVersionSelect.addEventListener('change', refreshDatasetStatus);
+datasetVersionSelect.addEventListener('change', () => {
+  stopPolling('dataset');
+  datasetProgress.hidden = true;
+  refreshDatasetStatus();
+});
 
 buildRagBtn.addEventListener('click', async () => {
   buildRagBtn.disabled = true;
@@ -238,8 +308,7 @@ buildRagBtn.addEventListener('click', async () => {
     const response = await fetch(`${BACKEND_URL}/api/rag/build`, { method: 'POST' });
     if (!response.ok) throw new Error((await response.json()).detail || 'Could not start RAG chunk creation');
     await refreshRagBuildStatus();
-    clearInterval(ragBuildStatusInterval);
-    ragBuildStatusInterval = setInterval(refreshRagBuildStatus, 2000);
+    startPolling('rag');
   } catch (error) {
     ragBuildStatus.textContent = error.message;
     await refreshRagBuildStatus();

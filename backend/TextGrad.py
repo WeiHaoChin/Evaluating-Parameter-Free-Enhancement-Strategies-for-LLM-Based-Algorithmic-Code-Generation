@@ -116,8 +116,8 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
             'type': 'iteration_complete',
             'loop': loop_idx + 1
         }
-    print(f"Updated input: {system_prompt_var}\n")
-    print(f"Textgrad model parameters: {textgrad_model.parameters()}\n")
+    # print(f"Updated System Prompt: {system_prompt_var.value}\n")
+    # print(f"Textgrad model parameters: {textgrad_model.parameters()}\n")
     final_answer = textgrad_model(prompt)
     answer_text = final_answer.value
     print(f"Final Updated Answer from textgrad loop: {answer_text}\n")
