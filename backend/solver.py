@@ -189,7 +189,7 @@ def run_pipeline(
     textgrad_api_key: Optional[str] = None,
     temperature: float = 0.0,
     starter_code: Optional[str] = None,
-    rag_context_cache: Optional[MutableMapping[str, str]] = None,
+    rag_context_cache: Optional[MutableMapping[str, dict]] = None,
     initial_response: Optional[str] = None,
     progress_callback: Optional[Callable[[str, str], None]] = None,
 ) -> dict:
@@ -212,14 +212,17 @@ def run_pipeline(
     formatted_prompt = build_task_prompt(problem, starter_code)
 
     # ── Step 1: RAG augmentation ───────────────────────────────────────────────
-    rag_context      = ""
+    rag_context = ""
+    rag_results = []
 
     if rag:
         report("retrieving", "Retrieving relevant RAG context")
         if is_rag_available():
             try:
                 if rag_context_cache is not None and problem in rag_context_cache:
-                    rag_context = rag_context_cache[problem]
+                    cached_rag = rag_context_cache[problem]
+                    rag_context = cached_rag.get("context", "")
+                    rag_results = cached_rag.get("results", [])
                     logger.info("Using cached RAG context for benchmark problem")
                 else:
                     logger.info("Querying RAG...")
@@ -228,7 +231,10 @@ def run_pipeline(
                     # Cache empty results too, otherwise an unsuccessful query
                     # would be repeated by the next RAG benchmark mode.
                     if rag_context_cache is not None:
-                        rag_context_cache[problem] = rag_context
+                        rag_context_cache[problem] = {
+                            "context": rag_context,
+                            "results": rag_results,
+                        }
                 if rag_context:
                     formatted_prompt = build_rag_prompt(formatted_prompt, rag_context)
                     logger.info(f"RAG context added ({len(rag_context)} chars)")
@@ -241,11 +247,12 @@ def run_pipeline(
 
     # ── Step 2: Generate solution ──────────────────────────────────────────────
     response = ""
+    improved_system_prompt = None
 
     if textgrad:
         logger.info("Running TextGrad...")
         try:
-            response = run_textgrad_sync(
+            response, improved_system_prompt = run_textgrad_sync(
                 prompt_text=formatted_prompt,
                 system_prompt=system_prompt,
                 loops=textgrad_loops,
@@ -257,6 +264,7 @@ def run_pipeline(
                 temperature=temperature,
                 initial_answer=initial_response,
                 progress_callback=progress_callback,
+                return_details=True,
             )
         except Exception as e:
             logger.error(f"TextGrad failed: {e}", exc_info=True)
@@ -331,6 +339,8 @@ def run_pipeline(
         "graded_list":          graded,
         "error_type":           error_type,
         "rag_context_included": bool(rag_context),
+        "rag_retrieved_data":  rag_results,
+        "textgrad_improved_system_prompt": improved_system_prompt,
         "latency_ms":           latency_ms,
         "metrics":               metrics,
         "metadata":              parsed_metadata,

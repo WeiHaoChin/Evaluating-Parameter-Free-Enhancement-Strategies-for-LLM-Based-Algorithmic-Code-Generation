@@ -5,6 +5,15 @@ from datetime import datetime
 from typing import Any, Optional
 
 RESULTS_DIR = Path(__file__).parent / "results"
+SENSITIVE_SETTING_KEYS = {"apiKey", "textGradApiKey"}
+
+
+def _safe_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    """Return a settings snapshot without credentials."""
+    return {
+        key: value for key, value in settings.items()
+        if key not in SENSITIVE_SETTING_KEYS
+    }
 
 
 def _ensure_results_dir() -> None:
@@ -28,15 +37,14 @@ def save_results(
     filename = RESULTS_DIR / f"{timestamp}.json"
 
     data: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "timestamp": datetime.now().isoformat(),
         "results": results,
         "summary": summary,
     }
     if settings is not None:
-        # Keep the configuration that produced the run, including the
-        # includeTextGrad setting from the UI.
-        data["settings"] = settings
+        # Keep reproducibility settings, but never persist API credentials.
+        data["settings"] = _safe_settings(settings)
 
     with open(filename, "w") as f:
         json.dump(data, f, indent=2, default=str)
@@ -94,6 +102,9 @@ def _normalise_loaded_results(data: Any) -> dict:
     # modes because every benchmark includes TextGrad and non-TextGrad modes.
     if not isinstance(data.get("settings"), dict):
         data["settings"] = None
+    else:
+        # Prevent legacy result files from exposing keys through the API.
+        data["settings"] = _safe_settings(data["settings"])
 
     for problem_result in data["results"]:
         if not isinstance(problem_result, dict):
@@ -108,5 +119,7 @@ def _normalise_loaded_results(data: Any) -> dict:
                 mode_result.setdefault(
                     "textgrad_included", mode_name in {"textgrad_only", "full"}
                 )
+                mode_result.setdefault("rag_retrieved_data", [])
+                mode_result.setdefault("textgrad_improved_system_prompt", None)
 
     return data

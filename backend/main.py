@@ -196,7 +196,7 @@ async def _build_rag_chunks() -> None:
     global _rag_build_task
     command = [
         sys.executable,
-        str(RAG_PIPELINE_PATH),
+        "-m", "backend.RAG.main",
         "--data-root", str(RAG_DATA_ROOT),
         "--embedder", "local",
         "--vector-db", "chroma",

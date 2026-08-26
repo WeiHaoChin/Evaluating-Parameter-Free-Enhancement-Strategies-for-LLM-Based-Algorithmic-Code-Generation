@@ -2,7 +2,12 @@
 import asyncio
 import time
 from typing import Optional
-from .fetch_lcb import load_lcb_problems
+from .fetch_lcb import (
+    load_lcb_problem,
+    load_lcb_problems,
+    select_lcb_problem_ids,
+)
+from .prefetch_lcb import is_parquet_prefetched
 from .metrics import compute_metrics
 from schemas import Settings
 from solver import run_pipeline
@@ -88,22 +93,28 @@ async def run_benchmark(
 
     # Loading a multi-gigabyte Arrow split is blocking work. Keep it off the
     # FastAPI event loop so status/readiness endpoints remain responsive.
-    problems = await asyncio.to_thread(
-        load_lcb_problems,
-        version=version,
-        n=n,
-        difficulty=difficulty,
-        seed=seed,
-    )
-    benchmark_status["total"] = len(problems)
+    parquet_mode = is_parquet_prefetched(version)
+    if parquet_mode:
+        selected = await asyncio.to_thread(
+            select_lcb_problem_ids, version, n, difficulty, seed
+        )
+    else:
+        selected = await asyncio.to_thread(
+            load_lcb_problems,
+            version=version,
+            n=n,
+            difficulty=difficulty,
+            seed=seed,
+        )
+    benchmark_status["total"] = len(selected)
 
     all_results = []
     # Both RAG modes use the same problem statement. Keep the retrieval cache
     # local to this run so a later run always reflects the current knowledge
     # base, while each statement is embedded and searched at most once here.
-    rag_context_cache: dict[str, str] = {}
+    rag_context_cache: dict[str, dict] = {}
 
-    for problem_idx, problem in enumerate(problems):
+    for problem_idx, selected_problem in enumerate(selected):
         # Check if stop was requested
         if benchmark_status["stop_requested"]:
             print("Benchmark stop requested. Halting execution.")
@@ -114,12 +125,23 @@ async def run_benchmark(
                 "summary": compute_metrics(all_results) if all_results else {},
             }
 
+        problem = (
+            await asyncio.to_thread(load_lcb_problem, version, selected_problem)
+            if parquet_mode else selected_problem
+        )
         benchmark_status["current_problem"] = problem["title"]
         benchmark_status["progress"] = problem_idx
         benchmark_status["modes"] = _fresh_mode_statuses()
 
+        # Evaluation samples and decoded tests are intentionally not retained
+        # in accumulated results, allowing their memory to be reclaimed after
+        # each problem finishes.
+        result_problem = {
+            key: value for key, value in problem.items()
+            if key not in {"evaluation_sample", "private_tests", "test_cases"}
+        }
         problem_results = {
-            "problem": problem,
+            "problem": result_problem,
             "modes": {},
         }
 
@@ -165,6 +187,8 @@ async def run_benchmark(
                     "pass_rate": 0.0,
                     "error_type": "EXCEPTION",
                     "system_prompt_used": None,
+                    "rag_retrieved_data": [],
+                    "textgrad_improved_system_prompt": None,
                     "latency_ms": 0,
                     "textgrad_included": mode["textgrad"],
                     "exception": str(e),

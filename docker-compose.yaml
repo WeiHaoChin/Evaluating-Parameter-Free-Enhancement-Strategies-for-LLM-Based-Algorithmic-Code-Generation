@@ -24,9 +24,9 @@ services:
     volumes:
       - .:/workspace          # Live sync Python files
       - ./backend/data/hf_cache:/workspace/backend/data/hf_cache  # Persist Hugging Face data
-      - rag_data:/workspace/backend/data/rag_chunks      # Persist RAG processed data
+      #- rag_data:/workspace/backend/data/rag_chunks      # Persist RAG processed data
     environment:
       - PYTHONPATH=/workspace/backend
 
-volumes:
-  rag_data:
+#volumes:
+  #rag_data:

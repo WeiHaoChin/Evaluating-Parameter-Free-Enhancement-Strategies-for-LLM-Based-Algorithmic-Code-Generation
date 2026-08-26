@@ -136,12 +136,17 @@ def run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, 
     }
 
 
-def run_textgrad_sync(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None, textGrad_api_key=None, temperature=0.0, initial_answer=None, progress_callback=None):
-    """Synchronous version that collects all events and returns final answer (for backward compatibility)."""
+def run_textgrad_sync(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1, api_key=None, textGrad_api_key=None, temperature=0.0, initial_answer=None, progress_callback=None, return_details=False):
+    """Collect TextGrad events and optionally return the optimized prompt."""
     answer_text = ''
+    improved_system_prompt = system_prompt
     for event in run_textgrad(prompt_text, system_prompt, textGradModel, model, loss_prompt, loops, api_key, textGrad_api_key, temperature, initial_answer, progress_callback):
+        if event['type'] == 'prompt_updated':
+            improved_system_prompt = event['updated']
         if event['type'] == 'complete':
             answer_text = event['answer']
+    if return_details:
+        return answer_text, improved_system_prompt
     return answer_text
 
 

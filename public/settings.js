@@ -217,17 +217,17 @@ async function refreshRagBuildStatus() {
       return;
     }
     stopPolling('rag');
-    if (status.percent || status.error) {
+    if (status.error) {
       setProgress(ragProgress, ragProgressFill, ragProgressPercent, ragProgressLabel,
-        status.percent, status.error ? `Failed: ${status.error}` : (status.message || 'Complete'));
+        status.percent, `Failed: ${status.error}`);
+    } else {
+      ragProgress.hidden = true;
+      ragProgressLog.hidden = true;
     }
     if (status.chunks_exist) {
       buildRagBtn.disabled = false;
       buildRagBtn.textContent = 'Rebuild RAG index';
       ragBuildStatus.textContent = `${status.chunk_count} RAG chunks are ready. Rebuilding replaces the existing index.`;
-      if (status.stage === 'complete') {
-        setProgress(ragProgress, ragProgressFill, ragProgressPercent, ragProgressLabel, 100, 'RAG knowledge base is ready.');
-      }
       return;
     }
     buildRagBtn.disabled = false;
@@ -253,7 +253,7 @@ async function refreshDatasetStatus() {
       datasetStatus.textContent = 'Downloaded and ready for benchmarks.';
       downloadDatasetBtn.disabled = true;
       downloadDatasetBtn.textContent = 'Dataset downloaded';
-      setProgress(datasetProgress, datasetProgressFill, datasetProgressPercent, datasetProgressLabel, 100, 'Dataset downloaded and ready.');
+      datasetProgress.hidden = true;
       stopPolling('dataset');
     } else if (status.downloading) {
       const sizeDetail = status.total_bytes
@@ -267,6 +267,7 @@ async function refreshDatasetStatus() {
       startPolling('dataset');
     } else {
       stopPolling('dataset');
+      datasetProgress.hidden = !status.error;
       datasetStatus.textContent = status.error
         ? `Download failed: ${status.error}`
         : 'Not downloaded. Download it before running a benchmark.';
