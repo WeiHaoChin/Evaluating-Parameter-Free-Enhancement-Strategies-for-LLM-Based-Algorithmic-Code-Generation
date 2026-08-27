@@ -72,6 +72,12 @@
             </div>
           </div>
 
+          <div class="settings-section">
+            <label for="maxOutputTokens">Maximum output tokens</label>
+            <input type="number" id="maxOutputTokens" min="1" step="1" />
+            <p class="field-note">Upper bound for final solution generation in every experimental mode.</p>
+          </div>
+
           <div class="settings-section dataset-section">
             <div>
               <label>LiveCodeBench dataset</label>
@@ -156,6 +162,12 @@
             <p class="field-note">How many optimization loops TextGrad should run (maximum 5).</p>
           </div>
 
+          <div class="settings-section" id="textGradInternalMaxOutputTokensSection" style="display: none;">
+            <label for="textGradInternalMaxOutputTokens">TextGrad internal output-token limit</label>
+            <input type="number" id="textGradInternalMaxOutputTokens" min="1" step="1" />
+            <p class="field-note">Upper bound for critique and prompt-optimisation calls; final generation uses the main limit.</p>
+          </div>
+
           <div class="settings-section" id="textGradLossPromptSection" style="display: none;">
             <label for="textGradLossPrompt">TextGrad loss prompt</label>
             <textarea id="textGradLossPrompt" rows="3">Evaluate this answer. It should be factual, clear, and directly answer the question.</textarea>
@@ -175,7 +187,7 @@
     </div>
 
     <script src="page-transitions.js?v=20260825"></script>
-    <script src="settings-store.js?v=20260827.11"></script>
-    <script src="settings.js?v=20260827.11"></script>
+    <script src="settings-store.js?v=20260827.13"></script>
+    <script src="settings.js?v=20260827.13"></script>
   </body>
 </html>

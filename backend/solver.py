@@ -9,11 +9,49 @@ from typing import Callable, MutableMapping, Optional
 import threading
 
 from TextGrad import run_textgrad_sync
-from llm_clients import create_llm_client
+from llm_clients import create_llm_client, estimate_output_tokens
+from config.generation import (
+    DEFAULT_MAX_OUTPUT_TOKENS,
+    DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
+)
 from rag_handler import query_rag, format_rag_context, is_rag_available
 from lcb_runner.evaluation.compute_code_generation_metrics import codegen_metrics
 
 logger = logging.getLogger(__name__)
+
+RESULT_CODE_LABELS = {
+    -2: "WRONG_ANSWER",
+    -3: "TIME_LIMIT_EXCEEDED",
+    -4: "RUNTIME_ERROR",
+}
+
+
+def summarize_test_outcomes(test_results: list) -> tuple[int, dict[str, int], Optional[str]]:
+    """Count evaluator outcomes and choose a primary problem-level error."""
+    counts = {
+        "PASSED": 0,
+        "WRONG_ANSWER": 0,
+        "TIME_LIMIT_EXCEEDED": 0,
+        "RUNTIME_ERROR": 0,
+    }
+    for result in test_results:
+        if result is True:
+            counts["PASSED"] += 1
+        elif result is False or result == -2:
+            counts["WRONG_ANSWER"] += 1
+        elif result in RESULT_CODE_LABELS:
+            counts[RESULT_CODE_LABELS[result]] += 1
+        else:
+            counts["RUNTIME_ERROR"] += 1
+
+    # Prefer the most operationally severe observed failure for the legacy
+    # single error_type field. Full detail remains available in outcome counts.
+    primary_error = next((
+        label for label in (
+            "RUNTIME_ERROR", "TIME_LIMIT_EXCEEDED", "WRONG_ANSWER"
+        ) if counts[label] > 0
+    ), None)
+    return counts["PASSED"], counts, primary_error
 
 
 # ── LLM caller ────────────────────────────────────────────────────────────────
@@ -24,9 +62,17 @@ def call_llm(
     model: str,
     api_key: Optional[str] = None,
     temperature: float = 0.0,
+    max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+    generation_records: Optional[list[dict]] = None,
+    mode: Optional[str] = None,
+    call_type: str = "final_generation",
 ) -> str:
     """Call LLM directly without TextGrad."""
-    llm = create_llm_client(model=model, api_key=api_key, temperature=temperature)
+    llm = create_llm_client(
+        model=model, api_key=api_key, temperature=temperature,
+        max_output_tokens=max_output_tokens, metadata_sink=generation_records,
+        mode=mode, call_type=call_type,
+    )
     return llm(message, system_prompt=system_prompt)
 
 
@@ -192,6 +238,9 @@ def run_pipeline(
     rag_context_cache: Optional[MutableMapping[str, dict]] = None,
     initial_response: Optional[str] = None,
     progress_callback: Optional[Callable[[str, str], None]] = None,
+    max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+    textgrad_internal_max_output_tokens: int = DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
+    mode: Optional[str] = None,
 ) -> dict:
     """
     Full CP solver pipeline.
@@ -203,7 +252,14 @@ def run_pipeline(
 
     Returns a result dict with pass metrics, latency, and the raw response.
     """
-    start = time.time()
+    pipeline_started = time.perf_counter()
+    generation_records: list[dict] = []
+    experiment_mode = mode or (
+        "full" if rag and textgrad else
+        "rag_only" if rag else
+        "textgrad_only" if textgrad else
+        "baseline"
+    )
 
     def report(state: str, detail: str) -> None:
         if progress_callback:
@@ -214,12 +270,16 @@ def run_pipeline(
     # ── Step 1: RAG augmentation ───────────────────────────────────────────────
     rag_context = ""
     rag_results = []
+    retrieval_duration_ms = 0.0
+    retrieval_cache_hit = False
 
     if rag:
+        retrieval_started = time.perf_counter()
         report("retrieving", "Retrieving relevant RAG context")
         if is_rag_available():
             try:
                 if rag_context_cache is not None and problem in rag_context_cache:
+                    retrieval_cache_hit = True
                     cached_rag = rag_context_cache[problem]
                     rag_context = cached_rag.get("context", "")
                     rag_results = cached_rag.get("results", [])
@@ -244,10 +304,12 @@ def run_pipeline(
                 logger.error(f"RAG query failed: {e}", exc_info=True)
         else:
             logger.warning("RAG enabled but unavailable")
+        retrieval_duration_ms = (time.perf_counter() - retrieval_started) * 1000
 
     # ── Step 2: Generate solution ──────────────────────────────────────────────
     response = ""
     improved_system_prompt = None
+    generation_started = time.perf_counter()
 
     if textgrad:
         logger.info("Running TextGrad...")
@@ -265,6 +327,10 @@ def run_pipeline(
                 initial_answer=initial_response,
                 progress_callback=progress_callback,
                 return_details=True,
+                max_output_tokens=max_output_tokens,
+                internal_max_output_tokens=textgrad_internal_max_output_tokens,
+                generation_records=generation_records,
+                mode=experiment_mode,
             )
         except Exception as e:
             logger.error(f"TextGrad failed: {e}", exc_info=True)
@@ -279,10 +345,17 @@ def run_pipeline(
                 system_prompt=system_prompt,
                 model=model,
                 api_key=api_key,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+                generation_records=generation_records,
+                mode=experiment_mode,
+                call_type="final_generation",
             )
         except Exception as e:
             logger.error(f"LLM call failed: {e}", exc_info=True)
             raise
+
+    generation_duration_ms = (time.perf_counter() - generation_started) * 1000
 
     # ── Step 3: Final evaluation ───────────────────────────────────────────────
     # test_data = {
@@ -294,6 +367,7 @@ def run_pipeline(
     generated_code_snippets = [[extract_code(response)]]
 
     report("judging", "Running generated code against test cases")
+    judging_started = time.perf_counter()
     metrics, results, final_metadata = codegen_metrics(
         evaluation_sample,
         generated_code_snippets,
@@ -319,12 +393,12 @@ def run_pipeline(
         parsed_metadata.append(cleaned_list)
     logger.debug("Evaluation complete: metrics=%s, result_groups=%d", metrics, len(results))
     test_results = results[0][0]
-    pass_count = sum(1 for r in test_results if r is True)
+    pass_count, test_outcome_counts, error_type = summarize_test_outcomes(test_results)
     pass_rate = pass_count / len(test_results) if test_results else 0.0
     passed_all = all(r is True for r in test_results) if test_results else False
-    error_type = None if passed_all else "WA"
     graded     = results[0] if results else []  # results is a dict keyed by problem index
-    latency_ms = int((time.time() - start) * 1000)
+    judging_duration_ms = (time.perf_counter() - judging_started) * 1000
+    latency_ms = (time.perf_counter() - pipeline_started) * 1000
 
     logger.info(
         f"Pipeline done — passed={passed_all}, pass_rate={pass_rate:.2f}, "
@@ -333,16 +407,27 @@ def run_pipeline(
 
     return {
         "response":             response,
+        "output_tokens_estimate": estimate_output_tokens(response),
+        "generation_records":    generation_records,
         "generated_code":       generated_code_snippets,    
         "passed":               passed_all,
         "pass_rate":            pass_rate,
+        "passed_tests":         pass_count,
+        "total_tests":          len(test_results),
         "graded_list":          graded,
         "error_type":           error_type,
+        "test_outcome_counts":  test_outcome_counts,
         "rag_context_included": bool(rag_context),
         "rag_retrieved_data":  rag_results,
         "textgrad_improved_system_prompt": improved_system_prompt,
         "latency_ms":           latency_ms,
+        "timings": {
+            "end_to_end_ms": latency_ms,
+            "retrieval_ms": retrieval_duration_ms,
+            "retrieval_cache_hit": retrieval_cache_hit,
+            "generation_workflow_ms": generation_duration_ms,
+            "judging_ms": judging_duration_ms,
+        },
         "metrics":               metrics,
         "metadata":              parsed_metadata,
-        "results":               results,
     }

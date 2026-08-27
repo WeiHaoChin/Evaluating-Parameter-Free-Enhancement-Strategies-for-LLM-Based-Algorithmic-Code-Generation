@@ -2047,6 +2047,20 @@ body {
   color: var(--accent);
 }
 
+.final-answer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.output-token-count {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .final-answer-section {
   background: var(--surface);
   border-color: var(--line-strong);

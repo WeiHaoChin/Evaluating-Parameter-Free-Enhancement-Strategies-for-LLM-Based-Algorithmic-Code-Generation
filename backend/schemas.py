@@ -6,6 +6,10 @@ from config.models import (
     model_requires_api_key,
     register_local_ollama_models,
 )
+from config.generation import (
+    DEFAULT_MAX_OUTPUT_TOKENS,
+    DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
+)
 # 1. APPROACH: Brief explanation of your algorithm and why it's correct
 # ── Schemas ────────────────────────────────────────────────────────────────────
 # The frontend obtains this list from /api/defaults rather than maintaining a
@@ -28,10 +32,14 @@ Requirements:
 - Output only the final solution code block, no partial attempts
 - Do not include test scaffolding or input parsing beyond what is needed""")
     temperature: float          = Field(default=0.0, ge=0.0, le=1.0)
+    maxOutputTokens: int        = Field(default=DEFAULT_MAX_OUTPUT_TOKENS, ge=1)
     includeRag: bool            = Field(default=True)
     includeTextGrad: bool       = Field(default=True)
     textGradModel: str          = Field(default="gemini-2.5-pro")
     textGradLoops: int          = Field(default=1, ge=1, le=5)
+    textGradInternalMaxOutputTokens: int = Field(
+        default=DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS, ge=1
+    )
     textGradLossPrompt: str     = Field(default="""You are evaluating a competitive programming solution. Your feedback will 
 be used to improve the prompt that generated this solution.
 

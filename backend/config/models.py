@@ -7,7 +7,8 @@ MODEL_CONFIG = {
     "gemma4:cloud": {"provider": "ollama_cloud"},
     "gpt-oss:120b": {"provider": "ollama_cloud"},
     "qwen3.5:cloud": {"provider": "ollama_cloud"},
-
+    "mistral-large-3:cloud": {"provider": "ollama_cloud"},
+    "kimi-k2.6:cloud": {"provider": "ollama_cloud"},
 }
 
 _LOCAL_OLLAMA_MODELS: set[str] = set()

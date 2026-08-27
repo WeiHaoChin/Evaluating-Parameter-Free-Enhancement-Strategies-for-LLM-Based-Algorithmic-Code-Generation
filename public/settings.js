@@ -2,6 +2,7 @@ const modelSelect = document.getElementById('modelSelect');
 const customModel = document.getElementById('customModel');
 const temperatureInput = document.getElementById('temperature');
 const temperatureValue = document.getElementById('temperatureValue');
+const maxOutputTokensInput = document.getElementById('maxOutputTokens');
 const apiKeySection = document.getElementById('apiKeySection');
 const apiKeyInput = document.getElementById('apiKey');
 const includeRag = document.getElementById('includeRag');
@@ -13,6 +14,8 @@ const textGradApiKeySection = document.getElementById('textGradApiKeySection');
 const textGradApiKeyInput = document.getElementById('textGradApiKey');
 const textGradLoopsSection = document.getElementById('textGradLoopsSection');
 const textGradLoopsInput = document.getElementById('textGradLoops');
+const textGradInternalMaxOutputTokensSection = document.getElementById('textGradInternalMaxOutputTokensSection');
+const textGradInternalMaxOutputTokensInput = document.getElementById('textGradInternalMaxOutputTokens');
 const systemPrompt = document.getElementById('systemPrompt');
 const textGradLossPromptSection = document.getElementById('textGradLossPromptSection');
 const textGradLossPrompt = document.getElementById('textGradLossPrompt');
@@ -142,10 +145,12 @@ function getSettingsFromForm() {
   return {
     model: selectedModel(modelSelect, customModel),
     temperature: parseFloat(temperatureInput.value),
+    maxOutputTokens: parseInt(maxOutputTokensInput.value, 10),
     includeRag: includeRag.checked,
     includeTextGrad: includeTextGrad.checked,
     textGradModel: selectedModel(textGradModelSelect, customTextGradModel),
     textGradLoops: Math.min(5, Math.max(1, parseInt(textGradLoopsInput.value, 10) || 1)),
+    textGradInternalMaxOutputTokens: parseInt(textGradInternalMaxOutputTokensInput.value, 10),
     textGradLossPrompt: textGradLossPrompt.value.trim() || 'Evaluate this answer. It should be factual, clear, and directly answer the question.',
     systemPrompt: systemPrompt.value,
     apiKey: apiKeyInput.value.trim(),
@@ -164,6 +169,7 @@ function updateSliderValue() {
 function populateForm(settings) {
   setModelSelection(modelSelect, customModel, settings.model || defaultSettings.model || models[0]);
   temperatureInput.value = settings.temperature ?? 0;
+  maxOutputTokensInput.value = settings.maxOutputTokens ?? defaultSettings.maxOutputTokens;
   updateSliderValue();
   apiKeyInput.value = settings.apiKey || '';
   includeRag.checked = settings.includeRag ?? false;
@@ -175,6 +181,8 @@ function populateForm(settings) {
   );
   textGradApiKeyInput.value = settings.textGradApiKey || '';
   textGradLoopsInput.value = Math.min(5, Math.max(1, settings.textGradLoops || 1));
+  textGradInternalMaxOutputTokensInput.value = settings.textGradInternalMaxOutputTokens
+    ?? defaultSettings.textGradInternalMaxOutputTokens;
   systemPrompt.value = settings.systemPrompt || '';
   textGradLossPrompt.value = settings.textGradLossPrompt || 'Evaluate this answer. It should be factual, clear, and directly answer the question.';
   updateApiKeyVisibility(selectedModel(modelSelect, customModel));
@@ -263,8 +271,10 @@ function updateTextGradVisibility(enabled) {
   textGradModelSection.style.display = enabled ? 'block' : 'none';
   updateTextGradApiKeyVisibility(textGradModelSelect.value, enabled);
   textGradLoopsSection.style.display = enabled ? 'block' : 'none';
+  textGradInternalMaxOutputTokensSection.style.display = enabled ? 'block' : 'none';
   textGradLossPromptSection.style.display = enabled ? 'block' : 'none';
   textGradLoopsInput.required = enabled;
+  textGradInternalMaxOutputTokensInput.required = enabled;
 }
 
 async function refreshRagBuildStatus() {

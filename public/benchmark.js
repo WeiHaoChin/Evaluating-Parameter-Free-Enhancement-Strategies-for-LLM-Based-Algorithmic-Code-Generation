@@ -356,7 +356,10 @@ function displayResults(data) {
         mode.replace(/_/g, ' ').toUpperCase(),
         metrics.pass_rate,
         metrics.avg_latency_ms,
-        metrics.textgrad_delta
+        metrics.textgrad_delta,
+        metrics.average_output_tokens,
+        metrics.average_model_wall_time_ms,
+        metrics.average_server_total_duration
       )
     );
   }
@@ -417,11 +420,13 @@ function displayResults(data) {
     table.className = 'error-table';
 
     const headerRow = table.insertRow();
-    headerRow.innerHTML = '<th>Error Type</th><th>Count</th>';
-
+    headerRow.innerHTML = '<th>Test Outcome</th><th>Count</th>';
     for (const [errorType, count] of Object.entries(errors)) {
       const row = table.insertRow();
-      row.innerHTML = `<td>${errorType}</td><td>${count}</td>`;
+      const outcomeCell = row.insertCell();
+      const countCell = row.insertCell();
+      outcomeCell.textContent = errorType.replace(/_/g, ' ');
+      countCell.textContent = count;
     }
 
     modeDiv.appendChild(table);
@@ -432,7 +437,7 @@ function displayResults(data) {
   displayProblemResults(data.results);
 }
 
-function createMetricCard(label, passRate, latency, textgradDelta) {
+function createMetricCard(label, passRate, latency, textgradDelta, outputTokens, modelWallTime, serverTotalDuration) {
   const card = document.createElement('div');
   card.className = 'metric-card';
 
@@ -442,13 +447,25 @@ function createMetricCard(label, passRate, latency, textgradDelta) {
     const deltaClass = textgradDelta >= 0 ? 'positive' : 'negative';
     deltaHTML = `<div class="metric-delta ${deltaClass}">Δ ${deltaStr}%</div>`;
   }
+  const tokenHTML = Number.isFinite(Number(outputTokens))
+    ? `<div class="metric-latency">${Number(outputTokens).toFixed(0)} output tokens avg</div>`
+    : '<div class="metric-latency">Token usage unavailable</div>';
+  const modelTimeHTML = Number.isFinite(Number(modelWallTime))
+    ? `<div class="metric-latency">${Number(modelWallTime).toFixed(0)}ms client-call avg</div>`
+    : '<div class="metric-latency">Client-call timing unavailable</div>';
+  const serverTimeHTML = Number.isFinite(Number(serverTotalDuration))
+    ? `<div class="metric-latency">${(Number(serverTotalDuration) / 1_000_000).toFixed(0)}ms Ollama server avg</div>`
+    : '<div class="metric-latency">Server timing unavailable</div>';
 
   card.innerHTML = `
     <div class="metric-label">${label}</div>
     <div class="metric-value">${(passRate * 100).toFixed(1)}%</div>
     <div class="metric-subtext">Pass Rate</div>
     ${deltaHTML}
-    <div class="metric-latency">${latency.toFixed(0)}ms avg</div>
+    <div class="metric-latency">${latency.toFixed(0)}ms end-to-end avg</div>
+    ${modelTimeHTML}
+    ${serverTimeHTML}
+    ${tokenHTML}
   `;
 
   return card;

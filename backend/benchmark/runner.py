@@ -153,7 +153,7 @@ async def run_benchmark(
                     "state": state, "detail": detail,
                 })
             try:
-                start_time = time.time()
+                start_time = time.perf_counter()
                 response = await asyncio.to_thread(
                     run_pipeline,
                     problem=problem["statement"],
@@ -163,6 +163,9 @@ async def run_benchmark(
                     system_prompt=settings.systemPrompt,
                     model=settings.model,
                     temperature=settings.temperature,
+                    max_output_tokens=settings.maxOutputTokens,
+                    textgrad_internal_max_output_tokens=settings.textGradInternalMaxOutputTokens,
+                    mode=mode_label,
                     textgrad_model=settings.textGradModel,
                     textgrad_loops=settings.textGradLoops,
                     textgrad_loss_prompt=settings.textGradLossPrompt,
@@ -173,13 +176,10 @@ async def run_benchmark(
                     initial_response=initial_response,
                     progress_callback=report,
                 )
-                latency = (time.time() - start_time) * 1000
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
 
-                mode_result = {
-                    **response,
-                    "latency_ms": latency,
-                    "textgrad_included": mode["textgrad"],
-                }
+                mode_result = {**response, "textgrad_included": mode["textgrad"]}
+                mode_result.setdefault("latency_ms", elapsed_ms)
                 report("complete", "Completed")
             except Exception as e:
                 mode_result = {
@@ -190,7 +190,7 @@ async def run_benchmark(
                     "system_prompt_used": None,
                     "rag_retrieved_data": [],
                     "textgrad_improved_system_prompt": None,
-                    "latency_ms": 0,
+                    "latency_ms": (time.perf_counter() - start_time) * 1000,
                     "textgrad_included": mode["textgrad"],
                     "exception": str(e),
                 }

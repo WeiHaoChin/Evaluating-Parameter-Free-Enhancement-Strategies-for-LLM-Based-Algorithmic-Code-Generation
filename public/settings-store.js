@@ -4,10 +4,12 @@
     'model',
     'systemPrompt',
     'temperature',
+    'maxOutputTokens',
     'includeRag',
     'includeTextGrad',
     'textGradModel',
     'textGradLoops',
+    'textGradInternalMaxOutputTokens',
     'textGradLossPrompt',
     'apiKey',
     'textGradApiKey',
@@ -51,6 +53,13 @@
     const loops = Number(merged.textGradLoops);
     if (!Number.isInteger(loops) || loops < 1 || loops > 5) {
       throw new Error('TextGrad loops must be an integer between 1 and 5.');
+    }
+    for (const key of ['maxOutputTokens', 'textGradInternalMaxOutputTokens']) {
+      const value = Number(merged[key]);
+      if (!Number.isInteger(value) || value < 1) {
+        throw new Error(`${key} must be a positive integer.`);
+      }
+      merged[key] = value;
     }
     for (const key of ['includeRag', 'includeTextGrad']) {
       if (typeof merged[key] !== 'boolean') throw new Error(`${key} must be true or false.`);

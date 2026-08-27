@@ -260,7 +260,7 @@ function sendMessageWebSocket(message) {
 }
 
 function handleStreamingEvent(event) {
-  const { type, data, loop, answer, original_prompt, updated, original, context, prompt } = event;
+  const { type, data, loop, answer, original_prompt, updated, original, context, prompt, generation_records } = event;
   
   // Collect all events
   state.collectedEvents.push(event);
@@ -299,7 +299,7 @@ function handleStreamingEvent(event) {
       break;
       
     case 'complete':
-      completeMessage(answer);
+      completeMessage(answer, generation_records || []);
       break;
       
     case 'error':
@@ -470,7 +470,11 @@ function appendIterationComplete(loop) {
   console.log(`Iteration ${loop} complete`);
 }
 
-function completeMessage(answer) {
+function estimateOutputTokens(text) {
+  return Math.ceil(new TextEncoder().encode(text || '').length / 4);
+}
+
+function completeMessage(answer, generationRecords = []) {
   // Create assistant message if it doesn't exist
   if (!state.currentAssistantMessage) {
     const row = document.createElement('div');
@@ -484,7 +488,15 @@ function completeMessage(answer) {
   const contentDiv = state.currentAssistantMessage.querySelector('div');
   const finalSection = document.createElement('div');
   finalSection.className = 'final-answer-section';
-  finalSection.innerHTML = `<strong>Final Answer:</strong><div class="markdown-body"></div><hr>`;
+  const finalRecord = [...generationRecords].reverse().find(record => record.call_type === 'final_generation');
+  const hasNativeCount = Number.isFinite(finalRecord?.output_tokens);
+  const outputTokens = hasNativeCount ? finalRecord.output_tokens : estimateOutputTokens(answer);
+  finalSection.innerHTML = `
+    <div class="final-answer-header">
+      <strong>Final Answer:</strong>
+      <span class="output-token-count">${hasNativeCount ? '' : '≈ '}${outputTokens.toLocaleString()} output tokens</span>
+    </div>
+    <div class="markdown-body"></div><hr>`;
   const answerDiv = finalSection.querySelector('.markdown-body');
   answerDiv.innerHTML = marked.parse(answer);
   contentDiv.insertBefore(finalSection, contentDiv.firstChild);
@@ -506,6 +518,8 @@ function completeMessage(answer) {
     state.messages.push({
       role: 'assistant',
       text: answer, // Save the final answer text
+      outputTokensEstimate: outputTokens,
+      generationRecords,
       html: fullResponseHTML, // Save the full HTML rendering
       events: state.collectedEvents // Save all streaming events
     });

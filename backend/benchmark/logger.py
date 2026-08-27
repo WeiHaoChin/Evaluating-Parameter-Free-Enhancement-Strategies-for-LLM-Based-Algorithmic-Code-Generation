@@ -37,7 +37,7 @@ def save_results(
     filename = RESULTS_DIR / f"{timestamp}.json"
 
     data: dict[str, Any] = {
-        "schema_version": 3,
+        "schema_version": 5,
         "timestamp": datetime.now().isoformat(),
         "results": results,
         "summary": summary,

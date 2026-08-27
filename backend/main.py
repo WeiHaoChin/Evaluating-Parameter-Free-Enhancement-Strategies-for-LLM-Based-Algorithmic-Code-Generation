@@ -120,6 +120,7 @@ def _build_rag_prompt_for_chat(message: str, settings: Settings) -> tuple[str, s
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     settings = request.settings
+    generation_records: list[dict] = []
     try:
         validate_api_key_settings(settings)
     except ValueError as exc:
@@ -139,7 +140,11 @@ async def chat(request: ChatRequest):
                 api_key=settings.apiKey,
                 textGrad_api_key=settings.textGradApiKey,
                 loss_prompt=settings.textGradLossPrompt,
-                temperature=settings.temperature
+                temperature=settings.temperature,
+                max_output_tokens=settings.maxOutputTokens,
+                internal_max_output_tokens=settings.textGradInternalMaxOutputTokens,
+                generation_records=generation_records,
+                mode="chat_textgrad",
             )
             reply = f"TextGrad result after {settings.textGradLoops} loops:\n{result}"
         except Exception as e:
@@ -152,6 +157,9 @@ async def chat(request: ChatRequest):
                 model=settings.model,
                 api_key=settings.apiKey,
                 temperature=settings.temperature,
+                max_output_tokens=settings.maxOutputTokens,
+                generation_records=generation_records,
+                mode="chat",
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"LLM call failed: {e}")
@@ -162,6 +170,7 @@ async def chat(request: ChatRequest):
         "rag_enabled":          settings.includeRag and is_rag_available(),
         "rag_context_included": bool(rag_context),
         "formatted_prompt":     formatted_prompt if rag_context else "",
+        "generation_records":   generation_records,
     }
 
 
@@ -325,6 +334,7 @@ async def websocket_chat(websocket: WebSocket):
                 )
 
                 if settings.includeTextGrad:
+                    generation_records: list[dict] = []
                     for event in run_textgrad(
                         prompt_text=formatted_prompt,
                         system_prompt=settings.systemPrompt,
@@ -334,20 +344,28 @@ async def websocket_chat(websocket: WebSocket):
                         api_key=settings.apiKey,
                         textGrad_api_key=settings.textGradApiKey,
                         loss_prompt=settings.textGradLossPrompt,
-                        temperature=settings.temperature
+                        temperature=settings.temperature,
+                        max_output_tokens=settings.maxOutputTokens,
+                        internal_max_output_tokens=settings.textGradInternalMaxOutputTokens,
+                        generation_records=generation_records,
+                        mode="chat_textgrad",
                     ):
                         await websocket.send_text(json.dumps(event))
 
                 else:
+                    generation_records = []
                     reply = call_llm(
                         message=formatted_prompt,
                         system_prompt=settings.systemPrompt,
                         model=settings.model,
                         api_key=settings.apiKey,
-                        temperature=settings.temperature
+                        temperature=settings.temperature,
+                        max_output_tokens=settings.maxOutputTokens,
+                        generation_records=generation_records,
+                        mode="chat",
                     )
                     await websocket.send_text(
-                        json.dumps({"type": "complete", "answer": reply})
+                        json.dumps({"type": "complete", "answer": reply, "generation_records": generation_records})
                     )
 
             except Exception as e:
