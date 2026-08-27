@@ -1,7 +1,12 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from benchmark.metrics import compute_metrics
+from benchmark.logger import append_test_case, _compact_results
 from llm_clients import OllamaLLM
+import rag_handler
 from solver import summarize_test_outcomes
 
 
@@ -16,6 +21,69 @@ class FakeOllamaClient:
 
 
 class GenerationMetadataTests(unittest.TestCase):
+    def test_rag_similarity_cutoff_keeps_boundary_and_higher_results(self):
+        class FakeCollection:
+            def query(self, **_kwargs):
+                return {
+                    "documents": [["below", "boundary", "above"]],
+                    "metadatas": [[{}, {}, {}]],
+                    "distances": [[0.201, 0.2, 0.1]],
+                }
+
+        previous = rag_handler._chroma_collection
+        rag_handler._chroma_collection = FakeCollection()
+        try:
+            results = rag_handler.query_rag("problem")
+        finally:
+            rag_handler._chroma_collection = previous
+
+        self.assertEqual(
+            [result["text"] for result in results], ["boundary", "above"]
+        )
+
+    def test_test_case_companion_appends_valid_json(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "run_testcases.json"
+            append_test_case(path, {
+                "id": "one", "title": "One", "test_cases": [1],
+                "private_tests": [2], "evaluation_sample": {"sample": 1},
+            }, {"seed": 42})
+            append_test_case(path, {
+                "id": "two", "title": "Two", "test_cases": [3],
+                "private_tests": [4], "evaluation_sample": {"sample": 2},
+            }, {"seed": 42})
+
+            saved = json.loads(path.read_text())
+            self.assertEqual(saved["benchmark"]["seed"], 42)
+            self.assertEqual(
+                [problem["id"] for problem in saved["problems"]],
+                ["one", "two"],
+            )
+            self.assertEqual(saved["problems"][1]["private_tests"], [4])
+
+    def test_result_compaction_removes_only_evaluation_payloads(self):
+        results = [{
+            "problem": {
+                "id": "one", "title": "Problem", "statement": "Keep me",
+                "test_cases": ["large"], "private_tests": ["very large"],
+                "evaluation_sample": {"input_output": "very large"},
+            },
+            "modes": {"baseline": {
+                "passed": True, "graded_list": [[True]],
+                "results": {"duplicate": True},
+            }},
+        }]
+
+        compacted = _compact_results(results)
+        self.assertEqual(compacted[0]["problem"]["statement"], "Keep me")
+        self.assertNotIn("private_tests", compacted[0]["problem"])
+        self.assertNotIn("test_cases", compacted[0]["problem"])
+        self.assertNotIn("evaluation_sample", compacted[0]["problem"])
+        self.assertNotIn("results", compacted[0]["modes"]["baseline"])
+        self.assertEqual(
+            compacted[0]["modes"]["baseline"]["graded_list"], [[True]]
+        )
+
     def test_ollama_limit_and_native_metadata_are_recorded(self):
         records = []
         llm = OllamaLLM(

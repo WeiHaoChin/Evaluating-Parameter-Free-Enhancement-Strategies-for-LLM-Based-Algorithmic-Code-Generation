@@ -4,6 +4,7 @@ Handles all RAG-related calls from backend.py using ChromaDB for vector search.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -16,6 +17,7 @@ _chroma_collection = None
 DATA_ROOT = Path(__file__).parent / "data"
 CHROMA_DB_PATH = DATA_ROOT / "rag_chunks" / "chroma_db"
 COLLECTION_NAME = "cp_rag"  # Default collection name, matches RAG pipeline
+DEFAULT_MIN_SIMILARITY = float(os.getenv("RAG_MIN_SIMILARITY", "0.8"))
 
 
 def initialize_rag(
@@ -101,6 +103,7 @@ def query_rag(
     query_text: str,
     n_results: int = 5,
     filters: Optional[Dict[str, Any]] = None,
+    min_similarity: float = DEFAULT_MIN_SIMILARITY,
 ) -> List[Dict[str, Any]]:
     """
     Query the RAG system for relevant chunks.
@@ -142,6 +145,9 @@ def query_rag(
                 # Convert distance to similarity score (1 - distance for cosine)
                 similarity = 1 - distance if distance is not None else 0
                 
+                if similarity < min_similarity:
+                    continue
+
                 formatted_results.append({
                     "text": doc,
                     "source": metadata.get("source", "unknown"),
@@ -199,6 +205,7 @@ def get_rag_augmented_response(
     n_results: int = 5,
     filters: Optional[Dict[str, Any]] = None,
     include_metadata: bool = True,
+    min_similarity: float = DEFAULT_MIN_SIMILARITY,
 ) -> tuple[str, List[Dict[str, Any]]]:
     """
     Get RAG context for a query and format it with the system prompt.
@@ -213,7 +220,12 @@ def get_rag_augmented_response(
     Returns:
         Tuple of (augmented_system_prompt, rag_results)
     """
-    rag_results = query_rag(query_text, n_results=n_results, filters=filters)
+    rag_results = query_rag(
+        query_text,
+        n_results=n_results,
+        filters=filters,
+        min_similarity=min_similarity,
+    )
     
     rag_context = format_rag_context(rag_results, include_metadata=include_metadata)
     

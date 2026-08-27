@@ -83,6 +83,11 @@
                 <label for="randomSeed">Sampling Seed:</label>
                 <input type="number" id="randomSeed" value="42" step="1" />
               </div>
+
+              <div class="config-field">
+                <label for="startQuestion">Start at Question:</label>
+                <input type="number" id="startQuestion" min="1" value="1" step="1" />
+              </div>
             </div>
 
             <button id="startBenchmarkBtn" class="start-benchmark-btn">
@@ -174,7 +179,7 @@
 
             <!-- Individual Problem Results -->
             <div class="results-section">
-              <h3>Individual Problem Results</h3>
+              <h3>Individual Problem Results (Test Cases)</h3>
               <div id="problemResultsContainer" class="problem-results-container"></div>
             </div>
 
@@ -200,7 +205,7 @@
     </div>
 
     <script src="page-transitions.js?v=20260825"></script>
-    <script src="settings-store.js?v=20260827.13"></script>
-    <script src="benchmark.js?v=20260827.15"></script>
+    <script src="settings-store.js?v=20260827.14"></script>
+    <script src="benchmark.js?v=20260827.17"></script>
   </body>
 </html>

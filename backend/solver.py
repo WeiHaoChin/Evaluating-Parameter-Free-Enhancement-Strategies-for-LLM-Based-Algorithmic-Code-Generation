@@ -9,7 +9,7 @@ from typing import Callable, MutableMapping, Optional
 import threading
 
 from TextGrad import run_textgrad_sync
-from llm_clients import create_llm_client, estimate_output_tokens
+from llm_clients import create_llm_client
 from config.generation import (
     DEFAULT_MAX_OUTPUT_TOKENS,
     DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
@@ -407,7 +407,6 @@ def run_pipeline(
 
     return {
         "response":             response,
-        "output_tokens_estimate": estimate_output_tokens(response),
         "generation_records":    generation_records,
         "generated_code":       generated_code_snippets,    
         "passed":               passed_all,

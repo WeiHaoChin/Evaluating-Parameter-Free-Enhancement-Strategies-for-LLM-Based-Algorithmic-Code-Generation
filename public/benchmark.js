@@ -12,6 +12,7 @@ const problemCount = document.getElementById('problemCount');
 const problemCountSlider = document.getElementById('problemCountSlider');
 const difficultySelect = document.getElementById('difficultySelect');
 const randomSeed = document.getElementById('randomSeed');
+const startQuestion = document.getElementById('startQuestion');
 const currentProblem = document.getElementById('currentProblem');
 const progressText = document.getElementById('progressText');
 const progressFill = document.getElementById('progressFill');
@@ -198,6 +199,7 @@ async function startBenchmark() {
   const version = versionSelect.value;
   const difficulty = difficultySelect.value || null;
   const seed = Number(randomSeed.value);
+  const startAt = Number(startQuestion.value);
   const settings = loadSavedSettings();
   console.log('Settings being sent:', settings);  // add this
   console.log('Model:', settings.model);           // add this
@@ -208,6 +210,10 @@ async function startBenchmark() {
   }
   if (!Number.isSafeInteger(seed)) {
     showAlert('Sampling seed must be an integer', 'error');
+    return;
+  }
+  if (!Number.isSafeInteger(startAt) || startAt < 1 || startAt > n) {
+    showAlert(`Start question must be between 1 and ${n}`, 'error');
     return;
   }
 
@@ -225,6 +231,7 @@ async function startBenchmark() {
         n,
         difficulty,
         seed,
+        startQuestion: startAt,
         settings,
       }),
     });
@@ -460,7 +467,7 @@ function createMetricCard(label, passRate, latency, textgradDelta, outputTokens,
   card.innerHTML = `
     <div class="metric-label">${label}</div>
     <div class="metric-value">${(passRate * 100).toFixed(1)}%</div>
-    <div class="metric-subtext">Pass Rate</div>
+    <div class="metric-subtext">Pass@1</div>
     ${deltaHTML}
     <div class="metric-latency">${latency.toFixed(0)}ms end-to-end avg</div>
     ${modelTimeHTML}
@@ -498,10 +505,10 @@ function displayProblemResults(results) {
   headerRow.className = 'header-row';
   headerRow.innerHTML = `
     <th>Problem</th>
-    <th>Baseline Pass Rate</th>
-    <th>RAG Only Pass Rate</th>
-    <th>TextGrad Only Pass Rate</th>
-    <th>RAG + TextGrad Pass Rate</th>
+    <th>Baseline Test Cases</th>
+    <th>RAG Only Test Cases</th>
+    <th>TextGrad Only Test Cases</th>
+    <th>RAG + TextGrad Test Cases</th>
   `;
 
   // Add result rows
@@ -532,6 +539,15 @@ function displayProblemResults(results) {
 
 function formatModePassRate(modeResult) {
   const passRate = Number(modeResult?.pass_rate);
+  const passedTests = Number(modeResult?.passed_tests);
+  const totalTests = Number(modeResult?.total_tests);
+  if (
+    Number.isFinite(passRate)
+    && Number.isInteger(passedTests)
+    && Number.isInteger(totalTests)
+  ) {
+    return `${passedTests}/${totalTests} (${(passRate * 100).toFixed(1)}%)`;
+  }
   return Number.isFinite(passRate) ? `${(passRate * 100).toFixed(1)}%` : '—';
 }
 

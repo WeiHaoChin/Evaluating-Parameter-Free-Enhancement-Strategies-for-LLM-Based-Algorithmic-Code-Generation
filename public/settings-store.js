@@ -68,7 +68,7 @@
       if (typeof merged[key] !== 'string') throw new Error(`${key} must be text.`);
     }
 
-    merged.temperature = temperature;
+    merged.temperature = Math.round(temperature * 10) / 10;
     merged.textGradLoops = loops;
     merged.apiKey = merged.apiKey.trim();
     merged.textGradApiKey = merged.textGradApiKey.trim();

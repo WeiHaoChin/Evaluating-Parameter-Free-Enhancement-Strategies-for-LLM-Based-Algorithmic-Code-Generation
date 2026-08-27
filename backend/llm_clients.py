@@ -1,5 +1,4 @@
 import logging
-import math
 import os
 import random
 import time
@@ -14,11 +13,6 @@ logger = logging.getLogger(__name__)
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 OLLAMA_CLOUD_HOST = os.getenv("OLLAMA_CLOUD_HOST", "https://ollama.com").rstrip("/")
 MAX_OUTPUT_TOKENS = DEFAULT_MAX_OUTPUT_TOKENS
-
-
-def estimate_output_tokens(text: str) -> int:
-    """Estimate generated tokens consistently when provider usage is unavailable."""
-    return math.ceil(len((text or "").encode("utf-8")) / 4)
 
 
 def _value(source, name, default=None):

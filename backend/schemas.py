@@ -103,7 +103,8 @@ class ChatRequest(BaseModel):
 
 class BenchmarkRequest(BaseModel):
     version: str = "release_v6"
-    n: int = 30
+    n: int = Field(default=30, ge=1, le=100)
     difficulty: Optional[str] = None
     seed: int = 42
+    startQuestion: int = Field(default=1, ge=1)
     settings: Optional[Settings] = Field(default_factory=Settings)

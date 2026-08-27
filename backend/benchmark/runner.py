@@ -1,7 +1,7 @@
 # benchmark/runner.py
 import asyncio
 import time
-from typing import Optional
+from typing import Callable, Optional
 from .fetch_lcb import (
     load_lcb_problem,
     load_lcb_problems,
@@ -65,7 +65,11 @@ async def run_benchmark(
     n: int = 30,
     difficulty: Optional[str] = None,
     seed: int = 42,
-    settings: Optional[Settings] = None
+    settings: Optional[Settings] = None,
+    start_question: int = 1,
+    checkpoint_callback: Optional[
+        Callable[[list[dict], dict, dict], None]
+    ] = None,
 ) -> dict:
     """
     Run benchmark across all 4 modes.
@@ -106,6 +110,9 @@ async def run_benchmark(
             difficulty=difficulty,
             seed=seed,
         )
+    # The seed defines one stable ordered sample. Starting at question N skips
+    # the first N-1 entries from that same sample, which supports manual resume.
+    selected = selected[max(0, start_question - 1):]
     benchmark_status["total"] = len(selected)
 
     all_results = []
@@ -216,7 +223,18 @@ async def run_benchmark(
         problem_results["modes"].update(dict(refined_modes))
 
         all_results.append(problem_results)
+        # The cache is only shared by this problem's RAG and combined modes.
+        # Releasing it here prevents retrieved documents accumulating across a
+        # long benchmark while preserving the one-retrieval-per-problem reuse.
+        rag_context_cache.pop(problem["statement"], None)
         benchmark_status["progress"] = problem_idx + 1
+        if checkpoint_callback is not None:
+            # All four modes for this problem are now complete. Persist one
+            # recoverable checkpoint before moving to the next problem.
+            partial_summary = compute_metrics(all_results)
+            await asyncio.to_thread(
+                checkpoint_callback, all_results, partial_summary, problem
+            )
         await asyncio.sleep(0)
 
     summary = compute_metrics(all_results)

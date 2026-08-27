@@ -163,7 +163,7 @@ function validateImportedSettings(settings) {
 }
 
 function updateSliderValue() {
-  temperatureValue.textContent = parseFloat(temperatureInput.value).toFixed(2);
+  temperatureValue.textContent = parseFloat(temperatureInput.value).toFixed(1);
 }
 
 function populateForm(settings) {

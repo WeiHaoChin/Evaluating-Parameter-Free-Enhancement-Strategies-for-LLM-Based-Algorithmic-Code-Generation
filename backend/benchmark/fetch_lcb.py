@@ -16,6 +16,19 @@ from benchmark.prefetch_lcb import (
 
 logger = logging.getLogger(__name__)
 
+LCB_COLUMNS = [
+    "question_id",
+    "question_title",
+    "question_content",
+    "difficulty",
+    "platform",
+    "contest_date",
+    "public_test_cases",
+    "private_test_cases",
+    "metadata",
+    "starter_code",
+]
+
 os.environ.setdefault("HF_HOME", str(HF_CACHE_DIR))
 os.environ.setdefault("HF_DATASETS_CACHE", str(HF_CACHE_DIR))
 
@@ -73,6 +86,7 @@ def _duckdb_connection():
     connection = duckdb.connect()
     connection.execute("SET memory_limit = '1GB'")
     connection.execute("SET threads = 1")
+    connection.execute("SET preserve_insertion_order = false")
     escaped_temp_dir = str(temp_dir).replace("'", "''")
     connection.execute(f"SET temp_directory = '{escaped_temp_dir}'")
     return connection
@@ -146,19 +160,45 @@ def _prepare_problem(item: dict) -> dict:
     }
 
 
+def _read_parquet_problem(paths: list[Path], question_id: str) -> dict:
+    """Read one Parquet row without materialising a giant DuckDB string vector."""
+    import pyarrow.parquet as pq
+
+    for path in paths:
+        parquet = pq.ParquetFile(path)
+        available = set(parquet.schema_arrow.names)
+        columns = [column for column in LCB_COLUMNS if column in available]
+        for row_group in range(parquet.num_row_groups):
+            ids = parquet.read_row_group(
+                row_group, columns=["question_id"]
+            ).column("question_id").to_pylist()
+            try:
+                row_index = ids.index(question_id)
+            except ValueError:
+                continue
+
+            # Private test strings can make a whole row group exceed the
+            # backend container's memory. A one-row Arrow batch bounds peak
+            # output allocation while retaining the selected tests intact.
+            batches = parquet.iter_batches(
+                batch_size=1, row_groups=[row_group], columns=columns
+            )
+            for index, batch in enumerate(batches):
+                if index != row_index:
+                    continue
+                return {
+                    name: batch.column(column_index)[0].as_py()
+                    for column_index, name in enumerate(batch.schema.names)
+                }
+
+    raise KeyError(f"LiveCodeBench question not found: {question_id}")
+
+
 def load_lcb_problem(version: str, question_id: str) -> dict:
-    """Load and decode one selected Parquet record."""
-    source = _parquet_sql(parquet_files(version))
-    with _duckdb_connection() as connection:
-        cursor = connection.execute(
-            f"SELECT * FROM {source} WHERE question_id = ? LIMIT 1",
-            [question_id],
-        )
-        row = cursor.fetchone()
-        columns = [description[0] for description in cursor.description]
-    if row is None:
-        raise KeyError(f"LiveCodeBench question not found: {question_id}")
-    return _prepare_problem(dict(zip(columns, row)))
+    """Load and decode one selected Parquet record with bounded memory."""
+    return _prepare_problem(
+        _read_parquet_problem(parquet_files(version), question_id)
+    )
 
 
 def load_lcb_problems(

@@ -3,7 +3,14 @@ import asyncio
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from benchmark.runner import run_benchmark, get_status, request_stop
-from benchmark.logger import save_results, load_latest_results, load_all_results
+from benchmark.logger import (
+    load_all_results,
+    load_latest_results,
+    new_results_path,
+    save_results,
+    append_test_case,
+    test_cases_path,
+)
 from benchmark.prefetch_lcb import is_prefetched, prefetch
 from schemas import Settings, BenchmarkRequest, settings_defaults
 from rag_handler import is_rag_available
@@ -127,6 +134,11 @@ async def start_benchmark(
     """
     if get_status()["running"]:
         raise HTTPException(status_code=409, detail="Benchmark already running")
+    if request.startQuestion > request.n:
+        raise HTTPException(
+            status_code=422,
+            detail="Start question cannot be greater than the sampled problem count.",
+        )
     if not is_prefetched(request.version):
         raise HTTPException(
             status_code=409,
@@ -142,15 +154,42 @@ async def start_benchmark(
         )
     # print(f"Starting benchmark with version={request.version}, n={request.n}, difficulty={request.difficulty}, settings={request.settings.dict()}")
     async def run_and_save() -> None:
+        settings = request.settings or Settings()
+        filename = new_results_path()
+        testcase_filename = test_cases_path(filename)
+        benchmark_config = {
+            "version": request.version,
+            "problem_count": request.n,
+            "difficulty": request.difficulty,
+            "seed": request.seed,
+            "start_question": request.startQuestion,
+        }
+        checkpoint_written = False
+        def checkpoint(
+            results: list[dict], summary: dict, problem: dict
+        ) -> None:
+            nonlocal checkpoint_written
+            save_results(
+                results, summary, settings.dict(), filename, benchmark_config
+            )
+            append_test_case(testcase_filename, problem, benchmark_config)
+            checkpoint_written = True
+
         result = await run_benchmark(
             version=request.version,
             n=request.n,
             difficulty=request.difficulty,
             seed=request.seed,
             settings=request.settings,
+            start_question=request.startQuestion,
+            checkpoint_callback=checkpoint,
         )
-        settings = request.settings or Settings()
-        save_results(result["results"], result["summary"], settings.dict())
+        if not checkpoint_written:
+            save_results(
+                result["results"], result["summary"], settings.dict(),
+                filename, benchmark_config,
+            )
+            append_test_case(testcase_filename, None, benchmark_config)
 
     background_tasks.add_task(run_and_save)
 
@@ -159,6 +198,7 @@ async def start_benchmark(
         "n_problems": request.n,
         "version": request.version,
         "seed": request.seed,
+        "start_question": request.startQuestion,
         "settings": request.settings.dict() if request.settings else Settings().dict(),
     }
 
