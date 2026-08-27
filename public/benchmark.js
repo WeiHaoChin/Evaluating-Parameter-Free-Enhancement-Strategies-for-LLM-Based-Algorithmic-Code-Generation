@@ -162,6 +162,7 @@ function loadSavedSettings() {
 }
 
 async function checkBackendStatus() {
+  backendStatus.classList.remove('connected', 'error');
   try {
     const response = await fetch(`${BACKEND_URL}/benchmark/status`);
     if (response.ok) {

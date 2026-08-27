@@ -6,6 +6,11 @@ const newChatBtn = document.getElementById('newChatBtn');
 const backendStatus = document.getElementById('backendStatus');
 const BACKEND_URL = 'http://localhost:5050';
 const BACKEND_WS_URL = 'ws://localhost:5050';
+const WELCOME_MESSAGE = 'Paste a competitive-programming problem to evaluate it with the current solver configuration.';
+const LEGACY_WELCOME_MESSAGES = [
+  'Welcome! This competitive-programming evaluation platform is styled like ChatGPT. Open the settings page to customize model or evaluation settings.',
+  'Welcome! This competitive-programming evaluation platform is styled like ChatGPT. Open the settings page to customize model, benchmark, or evaluation settings.',
+];
 
 // WebSocket connection state
 let ws = null;
@@ -87,10 +92,12 @@ function saveConversation(messages, settings) {
   const conversations = loadSavedConversations();
   
   // Filter out the welcome message - but keep all user and assistant messages
-  const welcomeText = 'Welcome! This competitive-programming evaluation platform is styled like ChatGPT. Open the settings page to customize model or evaluation settings.';
   const filteredMessages = messages.filter(m => {
     // Keep all messages except the welcome message from assistant
-    if (m.role === 'assistant' && m.text === welcomeText) {
+    if (
+      m.role === 'assistant'
+      && (m.text === WELCOME_MESSAGE || LEGACY_WELCOME_MESSAGES.includes(m.text))
+    ) {
       return false;
     }
     return true;
@@ -129,7 +136,7 @@ const state = {
     return [
       {
         role: 'assistant',
-        text: 'Welcome! This competitive-programming evaluation platform is styled like ChatGPT. Open the settings page to customize model, benchmark, or evaluation settings.',
+        text: WELCOME_MESSAGE,
       },
     ];
   })(),
@@ -193,7 +200,8 @@ function saveSettings(settings) {
 function setBackendStatus(connected) {
   if (!backendStatus) return;
   backendStatus.textContent = connected ? 'Backend: connected' : 'Backend: disconnected';
-  backendStatus.style.color = connected ? '#a5f3fc' : '#fca5a5';
+  backendStatus.classList.toggle('connected', connected);
+  backendStatus.classList.toggle('error', !connected);
 }
 
 async function checkBackendStatus() {
@@ -645,7 +653,7 @@ if (newChatBtn) {
     state.messages = [
       {
         role: 'assistant',
-        text: 'Welcome! This competitive-programming evaluation platform is styled like ChatGPT. Open the settings page to customize model or evaluation settings.',
+        text: WELCOME_MESSAGE,
       },
     ];
     saveCurrentChat(state.messages);
