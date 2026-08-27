@@ -385,6 +385,7 @@ body.page-leaving .app-shell {
 
 .settings-section select,
 .settings-section textarea,
+.settings-section input[type="text"],
 .settings-section input[type="password"] {
   width: 100%;
   border-radius: 14px;
@@ -841,6 +842,20 @@ input[type="range"] {
   margin: 0 0 20px;
   font-size: 1.5rem;
   color: #f1f5f9;
+}
+
+.field-note.status-success {
+  color: var(--success);
+}
+
+.field-note.status-error {
+  color: var(--danger);
+}
+
+.ollama-section .secondary-button {
+  justify-self: start;
+  padding: 10px 14px;
+  border-radius: 8px;
 }
 
 .benchmark-readiness {
@@ -1736,6 +1751,7 @@ body {
 .composer textarea,
 .settings-section select,
 .settings-section textarea,
+.settings-section input[type="text"],
 .settings-section input[type="password"],
 .config-field select,
 .config-field input[type="number"] {
@@ -1747,6 +1763,7 @@ body {
 .composer textarea:focus,
 .settings-section select:focus,
 .settings-section textarea:focus,
+.settings-section input[type="text"]:focus,
 .settings-section input[type="password"]:focus,
 .config-field select:focus,
 .config-field input[type="number"]:focus {

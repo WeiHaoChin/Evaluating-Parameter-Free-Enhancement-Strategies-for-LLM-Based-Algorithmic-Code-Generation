@@ -1,4 +1,5 @@
 const modelSelect = document.getElementById('modelSelect');
+const customModel = document.getElementById('customModel');
 const temperatureInput = document.getElementById('temperature');
 const temperatureValue = document.getElementById('temperatureValue');
 const apiKeySection = document.getElementById('apiKeySection');
@@ -7,6 +8,7 @@ const includeRag = document.getElementById('includeRag');
 const includeTextGrad = document.getElementById('includeTextGrad');
 const textGradModelSection = document.getElementById('textGradModelSection');
 const textGradModelSelect = document.getElementById('textGradModelSelect');
+const customTextGradModel = document.getElementById('customTextGradModel');
 const textGradApiKeySection = document.getElementById('textGradApiKeySection');
 const textGradApiKeyInput = document.getElementById('textGradApiKey');
 const textGradLoopsSection = document.getElementById('textGradLoopsSection');
@@ -34,12 +36,16 @@ const ragProgressLabel = document.getElementById('ragProgressLabel');
 const ragProgressPercent = document.getElementById('ragProgressPercent');
 const ragProgressFill = document.getElementById('ragProgressFill');
 const ragProgressLog = document.getElementById('ragProgressLog');
+const ollamaStatus = document.getElementById('ollamaStatus');
+const refreshOllamaBtn = document.getElementById('refreshOllamaBtn');
 const BACKEND_URL = 'http://localhost:5050';
+const CUSTOM_CLOUD_MODEL = '__ollama_cloud__';
 let datasetStatusInterval = null;
 let ragBuildStatusInterval = null;
 
 let defaultSettings = {};
 let models = [];
+let modelProviders = {};
 
 function setProgress(container, fill, percentNode, labelNode, percent, label) {
   const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
@@ -84,6 +90,21 @@ function populateSelect(id) {
     opt.value = opt.textContent = m;
     select.appendChild(opt);
   });
+  const cloudOption = document.createElement('option');
+  cloudOption.value = CUSTOM_CLOUD_MODEL;
+  cloudOption.textContent = 'Other Ollama Cloud model…';
+  select.appendChild(cloudOption);
+}
+
+function selectedModel(select, customInput) {
+  return select.value === CUSTOM_CLOUD_MODEL ? customInput.value.trim() : select.value;
+}
+
+function setModelSelection(select, customInput, model) {
+  const isListed = models.includes(model);
+  select.value = isListed ? model : CUSTOM_CLOUD_MODEL;
+  customInput.hidden = isListed;
+  customInput.value = isListed ? '' : model;
 }
 
 function loadSettings() {
@@ -98,13 +119,19 @@ async function fetchDefaultSettings() {
   const response = await fetch(`${BACKEND_URL}/api/defaults`);
   if (!response.ok) throw new Error('Unable to load schema defaults.');
 
-  const { models: schemaModels, ...schemaDefaults } = await response.json();
+  const {
+    models: schemaModels,
+    modelProviders: schemaModelProviders = {},
+    ...schemaDefaults
+  } = await response.json();
   if (!Array.isArray(schemaModels) || schemaModels.length === 0) {
     throw new Error('The backend did not provide any supported models.');
   }
   models = schemaModels;
+  modelProviders = schemaModelProviders;
   defaultSettings = {
     ...schemaDefaults,
+    modelProviders,
     // Optional Pydantic API-key defaults are null; form inputs use strings.
     apiKey: schemaDefaults.apiKey || '',
     textGradApiKey: schemaDefaults.textGradApiKey || '',
@@ -113,11 +140,11 @@ async function fetchDefaultSettings() {
 
 function getSettingsFromForm() {
   return {
-    model: modelSelect.value,
+    model: selectedModel(modelSelect, customModel),
     temperature: parseFloat(temperatureInput.value),
     includeRag: includeRag.checked,
     includeTextGrad: includeTextGrad.checked,
-    textGradModel: textGradModelSelect.value,
+    textGradModel: selectedModel(textGradModelSelect, customTextGradModel),
     textGradLoops: Math.min(5, Math.max(1, parseInt(textGradLoopsInput.value, 10) || 1)),
     textGradLossPrompt: textGradLossPrompt.value.trim() || 'Evaluate this answer. It should be factual, clear, and directly answer the question.',
     systemPrompt: systemPrompt.value,
@@ -135,21 +162,23 @@ function updateSliderValue() {
 }
 
 function populateForm(settings) {
-  modelSelect.value = models.includes(settings.model) ? settings.model : (defaultSettings.model || models[0]);
+  setModelSelection(modelSelect, customModel, settings.model || defaultSettings.model || models[0]);
   temperatureInput.value = settings.temperature ?? 0;
   updateSliderValue();
   apiKeyInput.value = settings.apiKey || '';
   includeRag.checked = settings.includeRag ?? false;
   includeTextGrad.checked = settings.includeTextGrad ?? false;
-  textGradModelSelect.value = models.includes(settings.textGradModel)
-    ? settings.textGradModel
-    : (defaultSettings.textGradModel || models[0]);
+  setModelSelection(
+    textGradModelSelect,
+    customTextGradModel,
+    settings.textGradModel || defaultSettings.textGradModel || models[0],
+  );
   textGradApiKeyInput.value = settings.textGradApiKey || '';
   textGradLoopsInput.value = Math.min(5, Math.max(1, settings.textGradLoops || 1));
   systemPrompt.value = settings.systemPrompt || '';
   textGradLossPrompt.value = settings.textGradLossPrompt || 'Evaluate this answer. It should be factual, clear, and directly answer the question.';
-  updateApiKeyVisibility(settings.model);
-  updateTextGradApiKeyVisibility(settings.textGradModel, settings.includeTextGrad);
+  updateApiKeyVisibility(selectedModel(modelSelect, customModel));
+  updateTextGradApiKeyVisibility(selectedModel(textGradModelSelect, customTextGradModel), settings.includeTextGrad);
   updateTextGradVisibility(settings.includeTextGrad);
 }
 
@@ -162,11 +191,52 @@ function showStatus(message) {
 }
 
 function needsApiKey(model) {
-  return model !== 'mock-chat:1.0';
+  return modelProviders[model] !== 'ollama_local' && model !== 'mock-chat:1.0';
 }
 
 function needsTextGradApiKey(textGradModel, includeTextGrad) {
-  return includeTextGrad && textGradModel && textGradModel !== 'mock-chat:1.0';
+  return includeTextGrad && textGradModel && needsApiKey(textGradModel);
+}
+
+async function refreshOllamaStatus() {
+  refreshOllamaBtn.disabled = true;
+  ollamaStatus.classList.remove('status-success', 'status-error');
+  ollamaStatus.textContent = 'Checking the local Ollama service...';
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/ollama/status`);
+    if (!response.ok) throw new Error(`Status request failed (${response.status})`);
+    const status = await response.json();
+    if (!status.running) {
+      ollamaStatus.textContent = `Ollama is not running at ${status.host}. Start Ollama, then refresh.`;
+      ollamaStatus.classList.add('status-error');
+      return;
+    }
+
+    const primarySelection = selectedModel(modelSelect, customModel);
+    const textGradSelection = selectedModel(textGradModelSelect, customTextGradModel);
+    for (const model of status.models || []) {
+      if (!models.includes(model)) models.push(model);
+      modelProviders[model] = 'ollama_local';
+    }
+    defaultSettings.modelProviders = modelProviders;
+    populateSelect('modelSelect');
+    populateSelect('textGradModelSelect');
+    setModelSelection(modelSelect, customModel, primarySelection || defaultSettings.model);
+    setModelSelection(textGradModelSelect, customTextGradModel, textGradSelection || defaultSettings.textGradModel);
+    updateApiKeyVisibility(selectedModel(modelSelect, customModel));
+    updateTextGradApiKeyVisibility(selectedModel(textGradModelSelect, customTextGradModel), includeTextGrad.checked);
+
+    const count = (status.models || []).length;
+    ollamaStatus.textContent = count
+      ? `Connected at ${status.host}. ${count} local model${count === 1 ? '' : 's'} available.`
+      : `Connected at ${status.host}, but no models are installed. Run ollama pull <model>.`;
+    ollamaStatus.classList.add(count ? 'status-success' : 'status-error');
+  } catch (error) {
+    ollamaStatus.textContent = 'Unable to query Ollama. Make sure the backend is running.';
+    ollamaStatus.classList.add('status-error');
+  } finally {
+    refreshOllamaBtn.disabled = false;
+  }
 }
 
 function updateApiKeyVisibility(model) {
@@ -317,8 +387,18 @@ buildRagBtn.addEventListener('click', async () => {
 });
 
 temperatureInput.addEventListener('input', updateSliderValue);
-modelSelect.addEventListener('change', () => updateApiKeyVisibility(modelSelect.value));
-textGradModelSelect.addEventListener('change', () => updateTextGradApiKeyVisibility(textGradModelSelect.value, includeTextGrad.checked));
+modelSelect.addEventListener('change', () => {
+  customModel.hidden = modelSelect.value !== CUSTOM_CLOUD_MODEL;
+  updateApiKeyVisibility(selectedModel(modelSelect, customModel));
+});
+customModel.addEventListener('input', () => updateApiKeyVisibility(selectedModel(modelSelect, customModel)));
+textGradModelSelect.addEventListener('change', () => {
+  customTextGradModel.hidden = textGradModelSelect.value !== CUSTOM_CLOUD_MODEL;
+  updateTextGradApiKeyVisibility(selectedModel(textGradModelSelect, customTextGradModel), includeTextGrad.checked);
+});
+customTextGradModel.addEventListener('input', () => updateTextGradApiKeyVisibility(
+  selectedModel(textGradModelSelect, customTextGradModel), includeTextGrad.checked,
+));
 includeTextGrad.addEventListener('change', () => {
   updateTextGradVisibility(includeTextGrad.checked);
   updateTextGradApiKeyVisibility(textGradModelSelect.value, includeTextGrad.checked);
@@ -359,6 +439,7 @@ downloadSettingsBtn.addEventListener('click', () => {
 });
 
 loadSettingsBtn.addEventListener('click', () => settingsFileInput.click());
+refreshOllamaBtn.addEventListener('click', refreshOllamaStatus);
 
 settingsFileInput.addEventListener('change', async () => {
   const [file] = settingsFileInput.files;
@@ -392,6 +473,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   const settings = loadSettings();
   populateForm(settings);
+  refreshOllamaStatus();
   refreshDatasetStatus();
   refreshRagBuildStatus();
   // ... rest of your existing DOMContentLoaded code

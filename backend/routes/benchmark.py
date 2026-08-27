@@ -7,6 +7,8 @@ from benchmark.logger import save_results, load_latest_results, load_all_results
 from benchmark.prefetch_lcb import is_prefetched, prefetch
 from schemas import Settings, BenchmarkRequest, settings_defaults
 from rag_handler import is_rag_available
+from config.models import model_requires_api_key
+from llm_clients import get_ollama_status
 
 router = APIRouter(prefix="/benchmark", tags=["benchmark"])
 
@@ -67,7 +69,7 @@ def benchmark_readiness(settings: Settings, version: str) -> dict:
     """Return the prerequisites needed for a meaningful full-pipeline run."""
     def api_key_ready(model: str, api_key: str | None) -> bool:
         """Keep benchmark validation in step with Settings' API-key behaviour."""
-        return bool(model and (model == "mock-chat:1.0" or (api_key and api_key.strip())))
+        return bool(model and (not model_requires_api_key(model) or (api_key and api_key.strip())))
 
     checks = {
         "dataset": {
@@ -82,8 +84,8 @@ def benchmark_readiness(settings: Settings, version: str) -> dict:
         },
         "llm_api": {
             "ready": api_key_ready(settings.model, settings.apiKey),
-            "label": "Initial LLM model & API key",
-            "detail": "Select an initial LLM and add its API key in Settings.",
+            "label": "Initial LLM access",
+            "detail": "Select a local Ollama model or configure the required remote API key.",
         },
         "textgrad_api": {
             "ready": bool(
@@ -91,8 +93,8 @@ def benchmark_readiness(settings: Settings, version: str) -> dict:
                 and settings.textGradModel
                 and api_key_ready(settings.textGradModel, settings.textGradApiKey)
             ),
-            "label": "TextGrad model & API key",
-            "detail": "Enable TextGrad, select its model, and add its API key in Settings.",
+            "label": "TextGrad model access",
+            "detail": "Enable TextGrad and select an available local model or configured remote model.",
         },
     }
     return {"ready": all(check["ready"] for check in checks.values()), "checks": checks}
@@ -207,4 +209,5 @@ async def get_default_settings() -> dict:
     """
     Get default settings from schemas.Settings
     """
-    return settings_defaults()
+    ollama = await asyncio.to_thread(get_ollama_status)
+    return {**settings_defaults(ollama["models"]), "ollama": ollama}

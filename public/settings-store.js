@@ -28,7 +28,6 @@
       throw new Error('Settings must be a JSON object.');
     }
 
-    const supportedModels = models.length ? models : (defaults.models || []);
     const merged = {
       ...withoutMetadata(defaults),
       ...withoutMetadata(settings),
@@ -38,11 +37,11 @@
     merged.apiKey = merged.apiKey ?? '';
     merged.textGradApiKey = merged.textGradApiKey ?? '';
 
-    if (supportedModels.length && !supportedModels.includes(merged.model)) {
-      throw new Error(`Unsupported primary model: ${merged.model || '(missing)'}.`);
-    }
-    if (supportedModels.length && !supportedModels.includes(merged.textGradModel)) {
-      throw new Error(`Unsupported TextGrad model: ${merged.textGradModel || '(missing)'}.`);
+    for (const key of ['model', 'textGradModel']) {
+      if (typeof merged[key] !== 'string' || !merged[key].trim()) {
+        throw new Error(`${key} must contain a model name.`);
+      }
+      merged[key] = merged[key].trim();
     }
 
     const temperature = Number(merged.temperature);
@@ -66,12 +65,14 @@
     merged.textGradApiKey = merged.textGradApiKey.trim();
 
     if (options.requireApiKeys) {
-      if (merged.model !== 'mock-chat:1.0' && !merged.apiKey) {
+      const providers = options.modelProviders || defaults.modelProviders || {};
+      const requiresApiKey = model => providers[model] !== 'ollama_local' && model !== 'mock-chat:1.0';
+      if (requiresApiKey(merged.model) && !merged.apiKey) {
         throw new Error('API key is required for the selected primary model.');
       }
       if (
         merged.includeTextGrad &&
-        merged.textGradModel !== 'mock-chat:1.0' &&
+        requiresApiKey(merged.textGradModel) &&
         !merged.textGradApiKey
       ) {
         throw new Error('API key is required for the selected TextGrad model.');

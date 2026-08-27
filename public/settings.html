@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Settings · CodeBench</title>
-    <link rel="stylesheet" href="styles.css?v=20260827.7" />
+    <link rel="stylesheet" href="styles.css?v=20260827.11" />
   </head>
   <body>
     <div class="app-shell">
@@ -41,12 +41,21 @@
             <label for="modelSelect">AI model</label>
             <select id="modelSelect">
             </select>
+            <input id="customModel" type="text" placeholder="Ollama Cloud model name" hidden />
+          </div>
+
+          <div class="settings-section ollama-section">
+            <div>
+              <label>Local Ollama</label>
+              <p id="ollamaStatus" class="field-note">Checking the local Ollama service...</p>
+            </div>
+            <button id="refreshOllamaBtn" class="secondary-button" type="button">Refresh local models</button>
           </div>
 
           <div class="settings-section" id="apiKeySection" style="display: none;">
             <label for="apiKey">API key</label>
             <input type="password" id="apiKey" placeholder="Enter API key for selected model" />
-            <p class="field-note">Required when using remote models like gemma3 or gpt-oss.</p>
+            <p class="field-note">Required for hosted providers and Ollama Cloud; detected local Ollama models remain keyless.</p>
           </div>
 
           <div class="settings-section" id="textGradSystemPromptSection">
@@ -131,13 +140,14 @@
             <label for="textGradModelSelect">TextGrad model</label>
             <select id="textGradModelSelect">
             </select>
+            <input id="customTextGradModel" type="text" placeholder="Ollama Cloud model name" hidden />
             <p class="field-note">Choose the model used for TextGrad evaluation.</p>
           </div>
 
           <div class="settings-section" id="textGradApiKeySection" style="display: none;">
             <label for="textGradApiKey">TextGrad API key</label>
             <input type="password" id="textGradApiKey" placeholder="Enter API key for TextGrad model" />
-            <p class="field-note">Required when using remote models for TextGrad.</p>
+            <p class="field-note">Required for hosted TextGrad providers and Ollama Cloud, but not detected local models.</p>
           </div>
 
           <div class="settings-section" id="textGradLoopsSection" style="display: none;">
@@ -165,7 +175,7 @@
     </div>
 
     <script src="page-transitions.js?v=20260825"></script>
-    <script src="settings-store.js?v=20260825"></script>
-    <script src="settings.js?v=20260825"></script>
+    <script src="settings-store.js?v=20260827.11"></script>
+    <script src="settings.js?v=20260827.11"></script>
   </body>
 </html>

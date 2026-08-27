@@ -1,19 +1,45 @@
 import logging
+import os
 import random
 import time
 
 import httpx
 from ollama import Client
 from google import genai
-from config.models import get_model_provider
+from config.models import get_model_provider, register_local_ollama_models
 
 logger = logging.getLogger(__name__)
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+OLLAMA_CLOUD_HOST = os.getenv("OLLAMA_CLOUD_HOST", "https://ollama.com").rstrip("/")
+
+
+def get_ollama_status() -> dict:
+    """Return local Ollama availability and the models installed on this machine."""
+    try:
+        response = Client(host=OLLAMA_HOST).list()
+        entries = getattr(response, "models", None)
+        if entries is None and isinstance(response, dict):
+            entries = response.get("models", [])
+        models = []
+        for entry in entries or []:
+            name = getattr(entry, "model", None) or getattr(entry, "name", None)
+            if name is None and isinstance(entry, dict):
+                name = entry.get("model") or entry.get("name")
+            if name:
+                models.append(str(name))
+        models = sorted(set(models))
+        register_local_ollama_models(models)
+        return {"running": True, "host": OLLAMA_HOST, "models": models, "error": None}
+    except Exception as exc:
+        register_local_ollama_models([])
+        logger.info("Local Ollama is unavailable at %s: %s", OLLAMA_HOST, exc)
+        return {"running": False, "host": OLLAMA_HOST, "models": [], "error": str(exc)}
 
 class OllamaLLM:
-    def __init__(self, model, host='https://ollama.com', api_key=None, temperature=0.0):
+    def __init__(self, model, host=None, api_key=None, temperature=0.0):
         self.model = model
-        headers = {'Authorization': f'Bearer {api_key}'} if api_key else {}
-        self.client = Client(host=host, headers=headers)
+        self.host = (host or OLLAMA_HOST).rstrip('/')
+        self.client = Client(host=self.host)
         self.temperature = temperature
 
     def __call__(self, prompt, system_prompt=None, **kwargs):
@@ -23,7 +49,26 @@ class OllamaLLM:
         messages.append({'role': 'user', 'content': str(prompt)})
 
         response = self.client.chat(model=self.model, messages=messages, options={'temperature': self.temperature})
+        message = getattr(response, 'message', None)
+        content = getattr(message, 'content', None)
+        if content is not None:
+            return content
         return response['message']['content']
+
+
+class OllamaCloudLLM(OllamaLLM):
+    """Authenticated Ollama Cloud client used for non-local model names."""
+
+    def __init__(self, model, api_key=None, temperature=0.0, **kwargs):
+        if not api_key:
+            raise ValueError("An Ollama Cloud API key is required for this model.")
+        self.model = model
+        self.host = OLLAMA_CLOUD_HOST
+        self.client = Client(
+            host=self.host,
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        self.temperature = temperature
 
 class GoogleGenerativeAI:
     def __init__(self, model, api_key,temperature=0.0):
@@ -142,7 +187,8 @@ def create_llm_client(model, api_key=None, temperature=0.0):
     provider = get_model_provider(model)
     client_types = {
         "google": GoogleGenerativeAI,
-        "ollama": OllamaLLM,
+        "ollama_local": OllamaLLM,
+        "ollama_cloud": OllamaCloudLLM,
         "anthropic": AnthropicLLM,
         "deepseek": DeepSeekLLM,
     }

@@ -1,6 +1,11 @@
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
-from config.models import MODEL_CONFIG
+from config.models import (
+    MODEL_CONFIG,
+    get_model_provider,
+    model_requires_api_key,
+    register_local_ollama_models,
+)
 # 1. APPROACH: Brief explanation of your algorithm and why it's correct
 # ── Schemas ────────────────────────────────────────────────────────────────────
 # The frontend obtains this list from /api/defaults rather than maintaining a
@@ -9,7 +14,7 @@ SUPPORTED_MODELS = tuple(MODEL_CONFIG)
 
 
 class Settings(BaseModel):
-    model: str                  = Field(default="gemma3:4b")
+    model: str                  = Field(default="gemini-2.5-pro")
     systemPrompt: str           = Field(default="""You are an expert competitive programmer. Given a competitive programming 
 problem, produce a correct and efficient solution.
 
@@ -25,7 +30,7 @@ Requirements:
     temperature: float          = Field(default=0.0, ge=0.0, le=1.0)
     includeRag: bool            = Field(default=True)
     includeTextGrad: bool       = Field(default=True)
-    textGradModel: str          = Field(default="gemma3:4b")
+    textGradModel: str          = Field(default="gemini-2.5-pro")
     textGradLoops: int          = Field(default=1, ge=1, le=5)
     textGradLossPrompt: str     = Field(default="""You are evaluating a competitive programming solution. Your feedback will 
 be used to improve the prompt that generated this solution.
@@ -50,23 +55,35 @@ The goal is to improve the instruction, not patch the output directly.""")
     @field_validator("model", "textGradModel")
     @classmethod
     def supported_model(cls, value: str) -> str:
-        if value not in SUPPORTED_MODELS:
-            raise ValueError(f"Unsupported model. Choose one of: {', '.join(SUPPORTED_MODELS)}")
+        value = value.strip()
+        get_model_provider(value)
         return value
 
 
-def settings_defaults() -> dict:
+def settings_defaults(local_models: list[str] | None = None) -> dict:
     """Settings defaults plus the supported choices for settings clients."""
-    return {**Settings().model_dump(), "models": list(SUPPORTED_MODELS)}
+    detected_local_models = local_models or []
+    register_local_ollama_models(detected_local_models)
+    models = list(dict.fromkeys([*detected_local_models, *SUPPORTED_MODELS]))
+    defaults = Settings().model_dump()
+    if detected_local_models:
+        # Prefer an actually installed local model without hard-coding its name.
+        defaults["model"] = detected_local_models[0]
+        defaults["textGradModel"] = detected_local_models[0]
+    return {
+        **defaults,
+        "models": models,
+        "modelProviders": {model: get_model_provider(model) for model in models},
+    }
 
 
 def validate_api_key_settings(settings: Settings) -> None:
     """Reject runnable configurations that are missing required model keys."""
-    if settings.model != "mock-chat:1.0" and not (settings.apiKey or "").strip():
+    if model_requires_api_key(settings.model) and not (settings.apiKey or "").strip():
         raise ValueError("API key is required for the selected primary model.")
     if (
         settings.includeTextGrad
-        and settings.textGradModel != "mock-chat:1.0"
+        and model_requires_api_key(settings.textGradModel)
         and not (settings.textGradApiKey or "").strip()
     ):
         raise ValueError("API key is required for the selected TextGrad model.")

@@ -162,6 +162,7 @@ async def run_benchmark(
                     textgrad=mode["textgrad"],
                     system_prompt=settings.systemPrompt,
                     model=settings.model,
+                    temperature=settings.temperature,
                     textgrad_model=settings.textGradModel,
                     textgrad_loops=settings.textGradLoops,
                     textgrad_loss_prompt=settings.textGradLossPrompt,

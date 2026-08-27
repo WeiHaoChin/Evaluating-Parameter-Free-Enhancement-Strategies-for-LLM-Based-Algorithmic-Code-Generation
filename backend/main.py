@@ -23,6 +23,7 @@ from rag_handler import (
 )
 from routes.benchmark import router as benchmark_router
 from schemas import Settings, ChatRequest, settings_defaults, validate_api_key_settings
+from llm_clients import get_ollama_status
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -48,6 +49,11 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up FYP Backend...")
     logger.info("=" * 60)
     logger.info("Initializing RAG system...")
+    ollama_status = await asyncio.to_thread(get_ollama_status)
+    if ollama_status["running"]:
+        logger.info("Local Ollama connected with %d installed model(s)", len(ollama_status["models"]))
+    else:
+        logger.warning("Local Ollama is not running at %s", ollama_status["host"])
     success = initialize_rag(embedder="local", local_model="BAAI/bge-small-en-v1.5")
     if success:
         logger.info("✓ RAG system initialized successfully")
@@ -165,6 +171,12 @@ async def status():
     return {"status": "ok", "backend": "available"}
 
 
+@app.get("/api/ollama/status")
+async def ollama_status():
+    """Check the local Ollama service and list models available for selection."""
+    return await asyncio.to_thread(get_ollama_status)
+
+
 def _record_rag_progress(line: str) -> None:
     """Convert orchestrator output into a stable progress payload for the UI."""
     output = (_rag_build_status["output"] + line)[-12000:]
@@ -265,7 +277,8 @@ async def rag_build_status():
 @app.get("/api/defaults")
 async def get_default_settings():
     """Get default settings from schemas.Settings"""
-    return settings_defaults()
+    ollama = await asyncio.to_thread(get_ollama_status)
+    return {**settings_defaults(ollama["models"]), "ollama": ollama}
 
 # ── WebSocket endpoint ─────────────────────────────────────────────────────────
 @app.websocket("/ws/chat")

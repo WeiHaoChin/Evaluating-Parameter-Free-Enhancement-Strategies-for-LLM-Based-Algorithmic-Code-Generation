@@ -16,37 +16,18 @@ const LEGACY_WELCOME_MESSAGES = [
 let ws = null;
 let wsConnected = false;
 
-// Default settings - will be replaced by backend defaults
-let defaultSettings = {
-  model: 'gemma3:4b',
-  systemPrompt: 'The explanation must be clear and beginner-friendly.',
-  temperature: 0.7,
-  includeRag: true,
-  includeTextGrad: true,
-  textGradModel: 'gemma3:4b',
-  textGradLoops: 1,
-  textGradLossPrompt: 'Evaluate this answer. It should be factual, clear, and directly answer the question.',
-  apiKey: '',
-  textGradApiKey: '',
-};
+// The backend is the sole source of model and prompt defaults.
+let defaultSettings = null;
 
 // Fetch default settings from backend
 async function fetchDefaultSettings() {
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/defaults`);
-    if (response.ok) {
-      defaultSettings = await response.json();
-      console.log('Default settings loaded from backend:', defaultSettings);
-    } else {
-      console.warn('Failed to fetch default settings from backend, using fallback');
-    }
-  } catch (error) {
-    console.error('Error fetching default settings:', error);
-    // Use fallback defaults defined above
-  }
+  const response = await fetch(`${BACKEND_URL}/api/defaults`);
+  if (!response.ok) throw new Error(`Unable to load backend defaults (${response.status}).`);
+  defaultSettings = await response.json();
 }
 
 function loadSavedSettings() {
+  if (!defaultSettings) throw new Error('Backend defaults have not loaded.');
   return window.SettingsStore.load(defaultSettings, defaultSettings.models || []);
 }
 
@@ -140,7 +121,7 @@ const state = {
       },
     ];
   })(),
-  settings: loadSavedSettings(),
+  settings: null,
   currentAssistantMessage: null,
   currentTextGradDetails: null,
   currentPrompt: null,
@@ -663,12 +644,22 @@ if (newChatBtn) {
 
 // Initialize app
 async function initializeApp() {
-  // Fetch default settings from backend first
-  await fetchDefaultSettings();
-  
-  // Reload state settings after defaults are fetched
-  state.settings = loadSavedSettings();
-  
+  messageInput.disabled = true;
+  messageInput.placeholder = 'Loading model settings...';
+  try {
+    await fetchDefaultSettings();
+    state.settings = loadSavedSettings();
+  } catch (error) {
+    console.error('Unable to initialize model settings:', error);
+    setBackendStatus(false);
+    renderMessages();
+    messageInput.disabled = true;
+    messageInput.placeholder = 'Start the backend to load model settings.';
+    return;
+  }
+  messageInput.disabled = false;
+  messageInput.placeholder = 'Send a message...';
+
   renderMessages();
   checkBackendStatus();
   if (backendStatus) {
