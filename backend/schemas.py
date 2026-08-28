@@ -23,11 +23,9 @@ class Settings(BaseModel):
 problem, produce a correct and efficient solution.
 
 Your response must follow this exact structure:
-1. COMPLEXITY: Time and space complexity analysis
-2. CODE: Complete, runnable solution in Python
+1. CODE: Complete, runnable solution in Python
 
 Requirements:
-- Handle all edge cases explicitly
 - Ensure your solution fits within the given time and memory constraints
 - Output only the final solution code block, no partial attempts
 - Do not include test scaffolding or input parsing beyond what is needed""")
@@ -43,20 +41,20 @@ Requirements:
     textGradLossPrompt: str     = Field(default="""You are evaluating a competitive programming solution. Your feedback will 
 be used to improve the prompt that generated this solution.
 
-Evaluate the solution on these criteria:
-1. CORRECTNESS: Does the logic handle all cases including edge cases?
+Evaluate only material failure risks:
+1. ALGORITHMIC CORRECTNESS: Does the logic handle all cases including edge cases?
 2. COMPLEXITY: Is the time/space complexity optimal for the constraints?
 3. COMPLETENESS: Is the solution fully implemented and runnable?
-4. CLARITY: Is the approach clearly explained?
+4. INTERFACE AND IMPLEMENTATION: Python implementation correctness, including indexing, types, imports, and output format
 
-For each criterion, state:
-- What the solution did well
-- What specific weakness exists
-- How the PROMPT (not the code) should be changed to elicit a better solution
+For each concrete risk, explain the weakness and recommend a precise change to the SYSTEM PROMPT that would reduce that risk in future generations.
 
-Focus your feedback on prompt-level issues — e.g. "the prompt should instruct 
-the model to explicitly consider overflow", not "the code has a bug on line 5". 
-The goal is to improve the instruction, not patch the output directly.""")
+Do not optimize for explanations, formatting elegance, or verbosity except where they affect executable correctness. Do not rewrite or patch the submitted code directly; provide prompt-level feedback for the optimizer.
+IMMUTABLE REQUIREMENTS:
+- The generated solution must be Python.
+- The final response must contain exactly one fenced Python code block.
+- Prompt optimization must preserve these requirements verbatim.
+- Never recommend C++, another programming language, explanations, or text outside the code block""")
     apiKey: Optional[str]       = Field(default=None)
     textGradApiKey: Optional[str] = Field(default=None)
 

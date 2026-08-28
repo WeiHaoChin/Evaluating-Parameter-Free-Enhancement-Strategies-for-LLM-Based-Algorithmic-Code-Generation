@@ -64,7 +64,7 @@ def run_textgrad(
         loops = 1
 
     prompt = Variable(prompt_text, requires_grad=False, role_description='The user input/question provided to the model. This is fixed and should not be modified.')
-    system_prompt_var = Variable(system_prompt, requires_grad=True, role_description="The system prompt that defines the model's behavior and instructions. Optimize this to improve the quality, accuracy, and clarity of the model's responses.")
+    system_prompt_var = Variable(system_prompt, requires_grad=True, role_description="The system prompt that defines the model's behavior and instructions. Optimize this to improve the quality, accuracy, and clarity of the model's responses. The solution must remain Python-only")
     textgrad_model, feedback_llm, main_llm = create_textgrad_model(
         textGradModel=textGradModel, model=model, system_prompt=system_prompt_var,
         api_key=api_key, textGrad_api_key=textGrad_api_key, temperature=temperature,

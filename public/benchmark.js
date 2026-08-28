@@ -427,7 +427,7 @@ function displayResults(data) {
     table.className = 'error-table';
 
     const headerRow = table.insertRow();
-    headerRow.innerHTML = '<th>Test Outcome</th><th>Count</th>';
+    headerRow.innerHTML = '<th>Test Case Outcome</th><th>Test Cases</th>';
     for (const [errorType, count] of Object.entries(errors)) {
       const row = table.insertRow();
       const outcomeCell = row.insertCell();
@@ -484,7 +484,7 @@ function createSmallMetricCard(label, passRate, total) {
   card.innerHTML = `
     <div class="small-metric-label">${label}</div>
     <div class="small-metric-value">${(passRate * 100).toFixed(1)}%</div>
-    <div class="small-metric-subtext">${total} problems</div>
+    <div class="small-metric-subtext">Pass@1 across ${total} problems</div>
   `;
   return card;
 }
