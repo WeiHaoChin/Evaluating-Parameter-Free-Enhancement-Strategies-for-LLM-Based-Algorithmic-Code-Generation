@@ -19,15 +19,7 @@ SUPPORTED_MODELS = tuple(MODEL_CONFIG)
 
 class Settings(BaseModel):
     model: str                  = Field(default="gemini-2.5-pro")
-    systemPrompt: str           = Field(default="""You are an expert competitive programmer. Given a competitive programming 
-problem, produce a correct and efficient solution.
-
-Requirements:
-- Return exactly one fenced Python code block and nothing else.
-- Ensure your solution fits within the given time and memory constraints
-- Output only the final solution code block without comments, no partial attempts
-- Do not use code comments as a reasoning scratchpad.
-- Do not include test scaffolding or input parsing beyond what is needed""")
+    systemPrompt: str           = Field(default="""You are an expert competitive programmer. Given a competitive programming problem, produce a correct and efficient solution that fits within the given time and memory constraints.""")
     temperature: float          = Field(default=0.0, ge=0.0, le=1.0)
     maxOutputTokens: int        = Field(default=DEFAULT_MAX_OUTPUT_TOKENS, ge=1)
     includeRag: bool            = Field(default=True)
@@ -41,8 +33,9 @@ Requirements:
 be used to improve the SYSTEM PROMPT that generated this solution.
 
 Report at most 5 material failure risks:
-1. ALGORITHMIC CORRECTNESS: Does the logic handle all cases including edge cases?
-2. COMPLEXITY: Is the time/space complexity optimal for the constraints?
+
+1. ALGORITHMIC CORRECTNESS: Identify only concrete correctness defects that can be demonstrated directly from the submitted solution. Do not speculate about alternative algorithms or convert an uncertain concern into a required implementation.
+2. COMPLEXITY: Report only a definite violation of the stated constraints. Recommend a prompt-level requirement to verify complexity, not a particular algorithm or data structure.
 3. COMPLETENESS: Is the solution fully implemented and runnable?
 4. INTERFACE AND IMPLEMENTATION: Python implementation correctness, including indexing, types, imports, and output format
 5. Comment misuse, including comments containing reasoning, partial attempts,
@@ -55,6 +48,8 @@ PROMPT CHANGE: <one-sentence change to the SYSTEM PROMPT>
 If there are no material risks, output:
 NO MATERIAL RISKS
 
+Do not recommend problem-specific algorithms, formulas, variable names, data structures, constants, or implementation steps in PROMPT CHANGE. Prompt changes must remain general and reusable across unrelated competitive-programming problems.
+
 Constraints for your critique:
 - Perform only the minimum analysis required and keep internal deliberation concise.
 - Use at most 400 words.
@@ -64,14 +59,7 @@ Constraints for your critique:
 - Do not rewrite or patch the submitted code.
 - Do not discuss style, formatting, or verbosity unless they affect correctness.
 - Prioritize definite defects over speculative concerns.
-- Return only the risk and prompt-change pairs.
-
-The optimized SYSTEM PROMPT must preserve these requirements:
-- The generated solution uses Python.
-- The generated response contains exactly one fenced Python code block.
-- The generated response contains no explanations outside the code block.
-- Do not recommend another programming language or removal of these requirements.
-- The generated code must contain no comments.""")
+- Return only the risk and prompt-change pairs.""")
     apiKey: Optional[str]       = Field(default=None)
     textGradApiKey: Optional[str] = Field(default=None)
 

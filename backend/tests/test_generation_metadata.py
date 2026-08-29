@@ -11,7 +11,12 @@ from benchmark.logger import append_test_case, _compact_results
 from llm_clients import OllamaLLM
 import rag_handler
 from solver import evaluate_response, summarize_test_outcomes
-from benchmark.runner import run_benchmark
+from TextGrad import (
+    IMMUTABLE_GENERATION_CONTRACT,
+    compose_constrained_system_prompt,
+)
+from textgrad import Variable
+from benchmark.runner import get_status, run_benchmark
 
 
 class FakeOllamaClient:
@@ -22,6 +27,23 @@ class FakeOllamaClient:
     def chat(self, *, model, messages, options):
         self.last_options = options
         return self.response
+
+
+class TextGradPromptConstraintTests(unittest.TestCase):
+    def test_only_advisory_prompt_is_trainable(self):
+        advisory = Variable(
+            "Prefer efficient solutions.",
+            requires_grad=True,
+            role_description="advisory",
+        )
+        combined = compose_constrained_system_prompt(advisory)
+
+        self.assertIn("Prefer efficient solutions.", combined.value)
+        self.assertIn(IMMUTABLE_GENERATION_CONTRACT, combined.value)
+        self.assertTrue(combined.requires_grad)
+        self.assertEqual(len(combined.predecessors), 2)
+        trainable = [item for item in combined.predecessors if item.requires_grad]
+        self.assertEqual(trainable, [advisory])
 
 
 class GenerationMetadataTests(unittest.TestCase):
@@ -38,12 +60,19 @@ class GenerationMetadataTests(unittest.TestCase):
             textGradLossPrompt="loss", apiKey=None, textGradApiKey=None,
             dict=lambda: {},
         )
+        status_snapshots = []
 
         def fake_pipeline(**kwargs):
             is_full = kwargs["rag"]
             label = "full" if is_full else "textgrad_only"
             initial = "B" if is_full else "A"
             final = "B-prime" if is_full else "A-prime"
+            report = kwargs["progress_callback"]
+            if is_full:
+                report("retrieving", "Retrieving relevant RAG context")
+            report("generating", "Generating answer (iteration 1/1)")
+            status_snapshots.append(get_status())
+            report("getting_feedback", "Getting feedback (iteration 1/1)")
             return {
                 "response": final,
                 "textgrad_initial_response": initial,
@@ -101,6 +130,14 @@ class GenerationMetadataTests(unittest.TestCase):
             modes["baseline"]["generation_records"][0]["call_type"],
             "final_generation",
         )
+        self.assertTrue(any(
+            snapshot["modes"]["baseline"]["state"] == "generating"
+            for snapshot in status_snapshots
+        ))
+        self.assertTrue(any(
+            snapshot["modes"]["rag_only"]["state"] == "generating"
+            for snapshot in status_snapshots
+        ))
 
     def test_rag_similarity_cutoff_keeps_boundary_and_higher_results(self):
         class FakeCollection:
@@ -272,7 +309,35 @@ class GenerationMetadataTests(unittest.TestCase):
         self.assertEqual(result["total_tests"], 43)
         self.assertEqual(result["pass_rate"], 0.0)
         self.assertEqual(result["error_type"], "RUNTIME_ERROR")
-        self.assertEqual(result["test_outcome_counts"]["RUNTIME_ERROR"], 1)
+        self.assertEqual(result["test_outcome_counts"]["RUNTIME_ERROR"], 43)
+
+    def test_macro_evaluator_accuracy_equal_weights_problems(self):
+        results = [
+            {
+                "problem": {"difficulty": "easy", "platform": "test"},
+                "modes": {"baseline": {
+                    "passed": False, "pass_rate": 1 / 2,
+                    "passed_tests": 1, "total_tests": 2,
+                    "latency_ms": 1,
+                }},
+            },
+            {
+                "problem": {"difficulty": "easy", "platform": "test"},
+                "modes": {"baseline": {
+                    "passed": False, "pass_rate": 40 / 44,
+                    "passed_tests": 40, "total_tests": 44,
+                    "latency_ms": 1,
+                }},
+            },
+        ]
+
+        overall = compute_metrics(results)["overall"]["baseline"]
+        self.assertAlmostEqual(
+            overall["macro_evaluator_group_accuracy"],
+            ((1 / 2) + (40 / 44)) / 2,
+        )
+        self.assertEqual(overall["evaluator_groups_passed"], 41)
+        self.assertEqual(overall["evaluator_groups_total"], 46)
 
     def test_benchmark_retains_mixed_test_outcomes(self):
         results = [{

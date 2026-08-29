@@ -366,10 +366,15 @@ function displayResults(data) {
         metrics.textgrad_delta,
         metrics.average_output_tokens,
         metrics.average_model_wall_time_ms,
-        metrics.average_server_total_duration
+        metrics.average_server_total_duration,
+        metrics.macro_evaluator_group_accuracy,
+        metrics.evaluator_groups_passed,
+        metrics.evaluator_groups_total
       )
     );
   }
+
+  displayPairedWorkflow(summary, data.results || []);
 
   // Difficulty Breakdown
   difficultyMetrics.innerHTML = '';
@@ -462,7 +467,88 @@ function displayResults(data) {
   displayProblemResults(data.results);
 }
 
-function createMetricCard(label, passRate, latency, textgradDelta, outputTokens, modelWallTime, serverTotalDuration) {
+function displayPairedWorkflow(summary, results) {
+  const container = document.getElementById('pairedWorkflow');
+  if (!container) return;
+
+  const overall = summary?.overall || {};
+  const baseline = overall.baseline || {};
+  const rag = overall.rag_only || {};
+  const textgrad = overall.textgrad_only || {};
+  const full = overall.full || {};
+  const actualInput = Number(textgrad.total_input_tokens || 0)
+    + Number(full.total_input_tokens || 0);
+  const actualOutput = Number(textgrad.total_output_tokens || 0)
+    + Number(full.total_output_tokens || 0);
+  const reusedInput = Number(baseline.total_input_tokens || 0)
+    + Number(rag.total_input_tokens || 0);
+  const reusedOutput = Number(baseline.total_output_tokens || 0)
+    + Number(rag.total_output_tokens || 0);
+  const actualTotal = actualInput + actualOutput;
+  const reusedTotal = reusedInput + reusedOutput;
+
+  container.innerHTML = `
+    <div class="paired-workflow-grid">
+      <div class="paired-workflow-row">
+        <span class="workflow-branch">No-RAG branch</span>
+        <span class="workflow-step">Generate A inside TextGrad</span>
+        <span class="workflow-arrow">&rarr;</span>
+        <span class="workflow-step workflow-reused">Judge A as Baseline</span>
+        <span class="workflow-arrow">&rarr;</span>
+        <span class="workflow-step">Critique and regenerate A&prime;</span>
+        <span class="workflow-arrow">&rarr;</span>
+        <span class="workflow-step">Judge A&prime; as TextGrad</span>
+      </div>
+      <div class="paired-workflow-row">
+        <span class="workflow-branch">RAG branch</span>
+        <span class="workflow-step">Retrieve and generate B inside Full</span>
+        <span class="workflow-arrow">&rarr;</span>
+        <span class="workflow-step workflow-reused">Judge B as RAG</span>
+        <span class="workflow-arrow">&rarr;</span>
+        <span class="workflow-step">Critique and regenerate B&prime;</span>
+        <span class="workflow-arrow">&rarr;</span>
+        <span class="workflow-step">Judge B&prime; as Full</span>
+      </div>
+    </div>
+    <p class="workflow-note">
+      Baseline and RAG are paired views of initial generations, not additional
+      generator calls. In particular, RAG reuses Full's initial RAG generation B.
+    </p>
+    <div class="token-accounting-grid">
+      <div class="token-accounting-card">
+        <span>Completed problems</span>
+        <strong>${results.length.toLocaleString()}</strong>
+      </div>
+      <div class="token-accounting-card">
+        <span>Actual unique input tokens</span>
+        <strong>${actualInput.toLocaleString()}</strong>
+      </div>
+      <div class="token-accounting-card">
+        <span>Actual unique output tokens</span>
+        <strong>${actualOutput.toLocaleString()}</strong>
+      </div>
+      <div class="token-accounting-card">
+        <span>Actual unique total tokens</span>
+        <strong>${actualTotal.toLocaleString()}</strong>
+      </div>
+      <div class="token-accounting-card token-accounting-reused">
+        <span>Reused tokens excluded from actual total</span>
+        <strong>${reusedTotal.toLocaleString()}</strong>
+      </div>
+    </div>
+    <p class="workflow-note">
+      Per-mode totals remain useful as hypothetical workflow costs. Summing all
+      four modes would double-count ${reusedTotal.toLocaleString()} tokens from
+      the shared Baseline and RAG initial generations.
+    </p>
+  `;
+}
+
+function createMetricCard(
+  label, passRate, latency, textgradDelta, outputTokens, modelWallTime,
+  serverTotalDuration, macroGroupAccuracy, evaluatorGroupsPassed,
+  evaluatorGroupsTotal
+) {
   const card = document.createElement('div');
   card.className = 'metric-card';
 
@@ -473,7 +559,7 @@ function createMetricCard(label, passRate, latency, textgradDelta, outputTokens,
     deltaHTML = `<div class="metric-delta ${deltaClass}">Δ ${deltaStr}%</div>`;
   }
   const tokenHTML = Number.isFinite(Number(outputTokens))
-    ? `<div class="metric-latency">${Number(outputTokens).toFixed(0)} output tokens avg</div>`
+    ? `<div class="metric-latency">${Number(outputTokens).toFixed(0)} output tokens/call avg</div>`
     : '<div class="metric-latency">Token usage unavailable</div>';
   const modelTimeHTML = Number.isFinite(Number(modelWallTime))
     ? `<div class="metric-latency">${Number(modelWallTime).toFixed(0)}ms client-call avg</div>`
@@ -481,12 +567,23 @@ function createMetricCard(label, passRate, latency, textgradDelta, outputTokens,
   const serverTimeHTML = Number.isFinite(Number(serverTotalDuration))
     ? `<div class="metric-latency">${(Number(serverTotalDuration) / 1_000_000).toFixed(0)}ms Ollama server avg</div>`
     : '<div class="metric-latency">Server timing unavailable</div>';
+  const macroAccuracyHTML = Number.isFinite(Number(macroGroupAccuracy))
+    ? `<div class="metric-latency">${(Number(macroGroupAccuracy) * 100).toFixed(1)}% macro evaluator-group accuracy</div>`
+    : '<div class="metric-latency">Macro evaluator-group accuracy unavailable</div>';
+  const rawGroupsHTML = (
+    Number.isFinite(Number(evaluatorGroupsPassed))
+    && Number.isFinite(Number(evaluatorGroupsTotal))
+  )
+    ? `<div class="metric-latency">${Number(evaluatorGroupsPassed)}/${Number(evaluatorGroupsTotal)} raw evaluator groups passed</div>`
+    : '';
 
   card.innerHTML = `
     <div class="metric-label">${label}</div>
     <div class="metric-value">${(passRate * 100).toFixed(1)}%</div>
     <div class="metric-subtext">Pass@1</div>
     ${deltaHTML}
+    ${macroAccuracyHTML}
+    ${rawGroupsHTML}
     <div class="metric-latency">${latency.toFixed(0)}ms end-to-end avg</div>
     ${modelTimeHTML}
     ${serverTimeHTML}
@@ -589,12 +686,22 @@ function createModePassRateContent(modeResult, baselinePassRate) {
   } else {
     value.textContent = passRate !== null ? `${(passRate * 100).toFixed(1)}%` : '—';
   }
-  if (
-    modeResult?.error_type === 'RUNTIME_ERROR'
-    && Number.isInteger(passedTests)
-    && Number.isInteger(totalTests)
-  ) {
-    value.textContent = `${passedTests}/${totalTests} (Runtime Error)`;
+  const outcomeCounts = modeResult?.test_outcome_counts;
+  const failureDetails = outcomeCounts && typeof outcomeCounts === 'object'
+    ? Object.entries(outcomeCounts)
+      .filter(([outcome, count]) => outcome !== 'PASSED' && Number(count) > 0)
+      .map(([outcome, count]) => `${formatOutcomeLabel(outcome)}: ${Number(count)}`)
+    : [];
+  if (failureDetails.length > 0) {
+    if (
+      passRate !== null
+      && Number.isInteger(passedTests)
+      && Number.isInteger(totalTests)
+    ) {
+      value.textContent = `${passedTests}/${totalTests} (${(passRate * 100).toFixed(1)}%; ${failureDetails.join(', ')})`;
+    } else {
+      value.textContent += ` (${failureDetails.join(', ')})`;
+    }
   } else if (modeResult?.error_type) {
     value.textContent += ` (${formatOutcomeLabel(modeResult.error_type)})`;
   }

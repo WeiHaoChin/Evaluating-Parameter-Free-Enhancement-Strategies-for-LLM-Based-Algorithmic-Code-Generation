@@ -54,6 +54,16 @@ def summarize_test_outcomes(test_results: list) -> tuple[int, dict[str, int], Op
     return counts["PASSED"], counts, primary_error
 
 
+def account_for_unexecuted_runtime_groups(
+    counts: dict[str, int], test_results: list, total_tests: int,
+) -> dict[str, int]:
+    """Count declared groups skipped after a runtime error as runtime failures."""
+    missing_groups = max(0, total_tests - len(test_results))
+    if missing_groups and counts.get("RUNTIME_ERROR", 0) > 0:
+        counts["RUNTIME_ERROR"] += missing_groups
+    return counts
+
+
 def count_evaluation_tests(evaluation_sample: dict) -> int:
     """Return the declared testcase count, even if evaluation exits early."""
     input_output = evaluation_sample.get("input_output", {})
@@ -261,6 +271,9 @@ def evaluate_response(response: str, evaluation_sample: dict) -> tuple[dict, flo
     test_results = results[0][0]
     pass_count, test_outcome_counts, error_type = summarize_test_outcomes(test_results)
     total_tests = max(len(test_results), count_evaluation_tests(evaluation_sample))
+    test_outcome_counts = account_for_unexecuted_runtime_groups(
+        test_outcome_counts, test_results, total_tests
+    )
     passed_all = total_tests > 0 and pass_count == total_tests
     judging_duration_ms = (time.perf_counter() - judging_started) * 1000
     return {
@@ -448,6 +461,9 @@ def run_pipeline(
     test_results = results[0][0]
     pass_count, test_outcome_counts, error_type = summarize_test_outcomes(test_results)
     total_tests = max(len(test_results), count_evaluation_tests(evaluation_sample[0]))
+    test_outcome_counts = account_for_unexecuted_runtime_groups(
+        test_outcome_counts, test_results, total_tests
+    )
     pass_rate = pass_count / total_tests if total_tests else 0.0
     passed_all = total_tests > 0 and pass_count == total_tests
     graded     = results[0] if results else []  # results is a dict keyed by problem index

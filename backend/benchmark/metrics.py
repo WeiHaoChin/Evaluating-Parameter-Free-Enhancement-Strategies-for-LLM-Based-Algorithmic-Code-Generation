@@ -23,6 +23,9 @@ def compute_metrics(results: list[dict]) -> dict:
             "prompt_tokens": [],
             "output_tokens": [],
             "truncated_count": 0,
+            "evaluator_group_rates": [],
+            "evaluator_groups_passed": 0,
+            "evaluator_groups_total": 0,
             "generation_durations": [],
             "client_durations": [],
             "server_total_durations": [],
@@ -120,6 +123,19 @@ def compute_metrics(results: list[dict]) -> dict:
             if mode_result.get("second_gen_passed", False):
                 stats["second_gen_pass_count"] += 1
 
+            passed_tests = mode_result.get("passed_tests")
+            total_tests = mode_result.get("total_tests")
+            if (
+                isinstance(passed_tests, (int, float))
+                and isinstance(total_tests, (int, float))
+                and total_tests > 0
+            ):
+                stats["evaluator_group_rates"].append(passed_tests / total_tests)
+                stats["evaluator_groups_passed"] += passed_tests
+                stats["evaluator_groups_total"] += total_tests
+            elif isinstance(mode_result.get("pass_rate"), (int, float)):
+                stats["evaluator_group_rates"].append(mode_result["pass_rate"])
+
             stats["by_difficulty"][difficulty]["total"] += 1
             if passed:
                 stats["by_difficulty"][difficulty]["pass"] += 1
@@ -167,6 +183,13 @@ def compute_metrics(results: list[dict]) -> dict:
 
         mode_metrics = {
             "pass_rate": pass_rate,
+            "macro_evaluator_group_accuracy": (
+                sum(stats["evaluator_group_rates"])
+                / len(stats["evaluator_group_rates"])
+                if stats["evaluator_group_rates"] else None
+            ),
+            "evaluator_groups_passed": stats["evaluator_groups_passed"],
+            "evaluator_groups_total": stats["evaluator_groups_total"],
             "second_gen_pass_rate": second_gen_pass_rate,
             "avg_latency_ms": avg_latency,
             "total_problems": total,

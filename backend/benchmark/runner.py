@@ -155,10 +155,34 @@ async def run_benchmark(
         async def run_mode(mode: dict) -> tuple[str, dict]:
             """Run one blocking solver invocation in a worker thread."""
             mode_label = mode["label"]
+            initial_label = {
+                "textgrad_only": "baseline",
+                "full": "rag_only",
+            }.get(mode_label)
+
             def report(state: str, detail: str) -> None:
                 benchmark_status["modes"][mode_label].update({
                     "state": state, "detail": detail,
                 })
+                if initial_label is None:
+                    return
+                initial_status = benchmark_status["modes"][initial_label]
+                if state == "retrieving" and initial_label == "rag_only":
+                    initial_status.update({"state": state, "detail": detail})
+                elif state == "generating" and detail.startswith(
+                    "Generating answer (iteration 1/"
+                ):
+                    initial_status.update({
+                        "state": "generating",
+                        "detail": "Generating paired initial answer",
+                    })
+                elif state in {"getting_feedback", "optimizing"} and (
+                    initial_status.get("state") == "generating"
+                ):
+                    initial_status.update({
+                        "state": "generating",
+                        "detail": "Initial answer generated; waiting for evaluation",
+                    })
             try:
                 start_time = time.perf_counter()
                 response = await asyncio.to_thread(
@@ -218,6 +242,10 @@ async def run_benchmark(
             refined = problem_results["modes"][refined_label]
             initial_response = refined.get("textgrad_initial_response")
             if not initial_response:
+                benchmark_status["modes"][initial_label].update({
+                    "state": "error",
+                    "detail": "Paired initial generation produced no answer",
+                })
                 return initial_label, {
                     "response": initial_response,
                     "generation_records": [],
@@ -235,6 +263,10 @@ async def run_benchmark(
                     "textgrad_included": False,
                 }
 
+            benchmark_status["modes"][initial_label].update({
+                "state": "judging",
+                "detail": "Evaluating paired initial answer",
+            })
             evaluation_fields, judging_ms = await asyncio.to_thread(
                 evaluate_response, initial_response, problem["evaluation_sample"]
             )
@@ -256,7 +288,7 @@ async def run_benchmark(
                 if rag_enabled else 0.0
             )
             latency_ms = retrieval_ms + generation_ms + judging_ms
-            return initial_label, {
+            result = {
                 "response": initial_response,
                 "generation_records": records,
                 **evaluation_fields,
@@ -275,16 +307,17 @@ async def run_benchmark(
                     "judging_ms": judging_ms,
                 },
             }
+            benchmark_status["modes"][initial_label].update({
+                "state": "complete",
+                "detail": "Completed",
+            })
+            return initial_label, result
 
         baseline_mode = await build_initial_result(
             "textgrad_only", "baseline", False
         )
         rag_mode = await build_initial_result("full", "rag_only", True)
         problem_results["modes"].update(dict([baseline_mode, rag_mode]))
-        for initial_label in ("baseline", "rag_only"):
-            benchmark_status["modes"][initial_label].update({
-                "state": "complete", "detail": "Completed",
-            })
         problem_results["modes"]["textgrad_only"].pop(
             "textgrad_initial_response", None
         )

@@ -14,6 +14,42 @@ load_dotenv()
 API_KEY = os.getenv('OLLAMA_API_KEY')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
+IMMUTABLE_GENERATION_CONTRACT = """
+NON-NEGOTIABLE OUTPUT CONTRACT:
+- The generated solution must use Python.
+- Return exactly one complete fenced Python code block and nothing else.
+- Do not include comments or docstrings in the generated code.
+- Do not include explanations, partial attempts, placeholders, dead code, test
+  scaffolding, or text outside the code block.
+- The code fence must be closed and the implementation must be complete and
+  runnable.
+- These requirements override any conflicting guidance above and must never be
+  removed, weakened, or reversed.
+""".strip()
+
+OPTIMIZATION_BOUNDARY = """
+Prompt changes must remain general and reusable across unrelated competitive
+programming problems. Do not prescribe a problem-specific algorithm, formula,
+data structure, variable name, constant, function signature, or implementation
+step. Do not modify or contradict the non-negotiable output contract.
+""".strip()
+
+
+def compose_constrained_system_prompt(advisory_prompt: Variable) -> Variable:
+    """Attach a fixed contract while leaving only advisory guidance trainable."""
+    immutable_contract = Variable(
+        "\n\n" + IMMUTABLE_GENERATION_CONTRACT,
+        requires_grad=False,
+        role_description="fixed non-negotiable generation contract",
+    )
+    return advisory_prompt + immutable_contract
+
+
+def refresh_blackbox_system_prompt(textgrad_model, system_prompt: Variable) -> None:
+    """Point both BlackboxLLM and its call node at a rebuilt prompt variable."""
+    textgrad_model.system_prompt = system_prompt
+    textgrad_model.llm_call.system_prompt = system_prompt
+
 def create_textgrad_model(
     textGradModel, model, system_prompt, api_key=None, textGrad_api_key=None,
     temperature=0.0, max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
@@ -60,7 +96,16 @@ def run_textgrad(
         loops = 1
 
     prompt = Variable(prompt_text, requires_grad=False, role_description='The user input/question provided to the model. This is fixed and should not be modified.')
-    system_prompt_var = Variable(system_prompt, requires_grad=True, role_description="The system prompt that defines the model's behavior and instructions. Optimize this to improve the quality, accuracy, and clarity of the model's responses. The solution must remain Python-only")
+    advisory_prompt_var = Variable(
+        system_prompt,
+        requires_grad=True,
+        role_description=(
+            "General reusable competitive-programming generation guidance. "
+            "Optimize only general advice; never add a problem-specific algorithm, "
+            "formula, data structure, variable name, constant, or implementation step."
+        ),
+    )
+    system_prompt_var = compose_constrained_system_prompt(advisory_prompt_var)
     textgrad_model, feedback_llm, main_llm = create_textgrad_model(
         textGradModel=textGradModel, model=model, system_prompt=system_prompt_var,
         api_key=api_key, textGrad_api_key=textGrad_api_key, temperature=temperature,
@@ -68,7 +113,7 @@ def run_textgrad(
         internal_max_output_tokens=internal_max_output_tokens,
         generation_records=generation_records, mode=mode,
     )
-    optimizer = TGD(parameters=[system_prompt_var], engine=feedback_llm)
+    optimizer = TGD(parameters=[advisory_prompt_var], engine=feedback_llm)
 
     answer_text = ''
     initial_answer_text = ''
@@ -104,7 +149,7 @@ def run_textgrad(
             progress_callback("getting_feedback", f"Getting feedback (iteration {loop_idx + 1}/{loops})")
         feedback_llm.set_generation_context("critique_evaluation")
         evaluation_instruction = Variable(
-            loss_prompt,
+            f"{loss_prompt}\n\n{OPTIMIZATION_BOUNDARY}",
             requires_grad=False,
             role_description="competitive programming evaluation instruction",
         )
@@ -135,6 +180,8 @@ def run_textgrad(
         loss.backward(engine=feedback_llm)
         feedback_llm.set_generation_context("prompt_optimization")
         optimizer.step()
+        system_prompt_var = compose_constrained_system_prompt(advisory_prompt_var)
+        refresh_blackbox_system_prompt(textgrad_model, system_prompt_var)
         
         # Send updated prompt event update system prompt after optimization
         yield {

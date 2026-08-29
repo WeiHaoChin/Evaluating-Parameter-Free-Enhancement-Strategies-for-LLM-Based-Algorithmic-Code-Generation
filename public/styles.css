@@ -1186,6 +1186,83 @@ input[type="range"] {
   color: #f1f5f9;
 }
 
+.paired-workflow-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.paired-workflow-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 12px;
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.2));
+  border-radius: 10px;
+}
+
+.workflow-branch,
+.workflow-step {
+  padding: 7px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.workflow-branch {
+  font-weight: 700;
+  color: var(--accent, #0f766e);
+}
+
+.workflow-step {
+  background: var(--surface-muted, rgba(148, 163, 184, 0.12));
+}
+
+.workflow-reused {
+  background: var(--success-soft, rgba(16, 185, 129, 0.12));
+  border: 1px solid #a7bdae;
+}
+
+.workflow-arrow {
+  color: var(--ink-soft, #64748b);
+  font-weight: 700;
+}
+
+.workflow-note {
+  margin: 12px 0 0;
+  color: var(--ink-soft, #64748b);
+  line-height: 1.5;
+}
+
+.token-accounting-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.token-accounting-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line, rgba(148, 163, 184, 0.2));
+  border-radius: 10px;
+}
+
+.token-accounting-card span {
+  color: var(--ink-soft, #64748b);
+  font-size: 0.8rem;
+}
+
+.token-accounting-card strong {
+  color: var(--ink, #0f172a);
+  font-size: 1.15rem;
+}
+
+.token-accounting-reused {
+  background: var(--warning-soft, rgba(245, 158, 11, 0.12));
+}
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
