@@ -1,6 +1,7 @@
 import os
 import textgrad as tg
 from textgrad import Variable, TGD
+from textgrad.loss import MultiFieldEvaluation
 from dotenv import load_dotenv
 from llm_clients import create_llm_client
 from config.models import get_model_provider
@@ -8,11 +9,6 @@ from config.generation import (
     DEFAULT_MAX_OUTPUT_TOKENS,
     DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
 )
-
-import time
-import random
-from functools import partial
-from textgrad.variable import _backward_idempotent
 
 load_dotenv()
 API_KEY = os.getenv('OLLAMA_API_KEY')
@@ -52,7 +48,7 @@ def create_textgrad_model(
 
 def run_textgrad(
     prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1,
-    api_key=None, textGrad_api_key=None, temperature=0.0, initial_answer=None,
+    api_key=None, textGrad_api_key=None, temperature=0.0,
     progress_callback=None, max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
     internal_max_output_tokens=DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
     generation_records=None,
@@ -75,6 +71,7 @@ def run_textgrad(
     optimizer = TGD(parameters=[system_prompt_var], engine=feedback_llm)
 
     answer_text = ''
+    initial_answer_text = ''
     for loop_idx in range(loops):
         if progress_callback:
             progress_callback("generating", f"Generating answer (iteration {loop_idx + 1}/{loops})")
@@ -85,28 +82,13 @@ def run_textgrad(
             'original_prompt': prompt.value
         }
 
-        # When the benchmark already generated an answer for this exact prompt,
-        # evaluate that answer instead of paying for a duplicate initial call.
-        # The identity gradient connects its critique to the optimised system
-        # prompt just as the normal BlackboxLLM output would.
-        if loop_idx == 0 and initial_answer is not None:
-            answer = Variable(
-                initial_answer,
-                predecessors=[system_prompt_var],
-                requires_grad=True,
-                role_description="initial solution reused from the paired benchmark mode",
-            )
-            answer.set_grad_fn(partial(
-                _backward_idempotent,
-                variables=[system_prompt_var],
-                summation=answer,
-            ))
-        else:
-            main_llm.set_generation_context(
-                "initial_generation" if loop_idx == 0 else "regenerated_solution"
-            )
-            answer = textgrad_model(prompt)
+        main_llm.set_generation_context(
+            "initial_generation" if loop_idx == 0 else "regenerated_solution"
+        )
+        answer = textgrad_model(prompt)
         answer_text = answer.value
+        if loop_idx == 0:
+            initial_answer_text = answer_text
         print(f"--- Iteration {loop_idx+1} ---")
         print(f"Response: {answer_text}\n")
         
@@ -121,8 +103,20 @@ def run_textgrad(
         if progress_callback:
             progress_callback("getting_feedback", f"Getting feedback (iteration {loop_idx + 1}/{loops})")
         feedback_llm.set_generation_context("critique_evaluation")
-        loss_fn = tg.TextLoss(loss_prompt, engine=feedback_llm)
-        loss = loss_fn(answer)
+        evaluation_instruction = Variable(
+            loss_prompt,
+            requires_grad=False,
+            role_description="competitive programming evaluation instruction",
+        )
+        loss_fn = MultiFieldEvaluation(
+            evaluation_instruction=evaluation_instruction,
+            role_descriptions=[
+                "problem prompt and optional retrieval context",
+                "generated Python solution",
+            ],
+            engine=feedback_llm,
+        )
+        loss = loss_fn([prompt, answer])
         critic_response = str(loss)
         print(f"--- Iteration {loop_idx+1} ---")
         print(f"Critic Response: {critic_response}\n")
@@ -170,13 +164,14 @@ def run_textgrad(
     yield {
         'type': 'complete',
         'answer': answer_text,
+        'initial_answer': initial_answer_text,
         'generation_records': generation_records or [],
     }
 
 
 def run_textgrad_sync(
     prompt_text, system_prompt, textGradModel, model, loss_prompt, loops=1,
-    api_key=None, textGrad_api_key=None, temperature=0.0, initial_answer=None,
+    api_key=None, textGrad_api_key=None, temperature=0.0,
     progress_callback=None, return_details=False,
     max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
     internal_max_output_tokens=DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
@@ -185,18 +180,20 @@ def run_textgrad_sync(
 ):
     """Collect TextGrad events and optionally return the optimized prompt."""
     answer_text = ''
+    initial_answer_text = ''
     improved_system_prompt = system_prompt
     for event in run_textgrad(
         prompt_text, system_prompt, textGradModel, model, loss_prompt, loops,
-        api_key, textGrad_api_key, temperature, initial_answer, progress_callback,
+        api_key, textGrad_api_key, temperature, progress_callback,
         max_output_tokens, internal_max_output_tokens, generation_records, mode,
     ):
         if event['type'] == 'prompt_updated':
             improved_system_prompt = event['updated']
         if event['type'] == 'complete':
             answer_text = event['answer']
+            initial_answer_text = event['initial_answer']
     if return_details:
-        return answer_text, improved_system_prompt
+        return answer_text, improved_system_prompt, initial_answer_text
     return answer_text
 
 

@@ -22,12 +22,11 @@ class Settings(BaseModel):
     systemPrompt: str           = Field(default="""You are an expert competitive programmer. Given a competitive programming 
 problem, produce a correct and efficient solution.
 
-Your response must follow this exact structure:
-1. CODE: Complete, runnable solution in Python
-
 Requirements:
+- Return exactly one fenced Python code block and nothing else.
 - Ensure your solution fits within the given time and memory constraints
-- Output only the final solution code block, no partial attempts
+- Output only the final solution code block without comments, no partial attempts
+- Do not use code comments as a reasoning scratchpad.
 - Do not include test scaffolding or input parsing beyond what is needed""")
     temperature: float          = Field(default=0.0, ge=0.0, le=1.0)
     maxOutputTokens: int        = Field(default=DEFAULT_MAX_OUTPUT_TOKENS, ge=1)
@@ -39,22 +38,40 @@ Requirements:
         default=DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS, ge=1
     )
     textGradLossPrompt: str     = Field(default="""You are evaluating a competitive programming solution. Your feedback will 
-be used to improve the prompt that generated this solution.
+be used to improve the SYSTEM PROMPT that generated this solution.
 
-Evaluate only material failure risks:
+Report at most 5 material failure risks:
 1. ALGORITHMIC CORRECTNESS: Does the logic handle all cases including edge cases?
 2. COMPLEXITY: Is the time/space complexity optimal for the constraints?
 3. COMPLETENESS: Is the solution fully implemented and runnable?
 4. INTERFACE AND IMPLEMENTATION: Python implementation correctness, including indexing, types, imports, and output format
+5. Comment misuse, including comments containing reasoning, partial attempts,
+   alternative approaches, uncertainty, or abandoned logic
 
-For each concrete risk, explain the weakness and recommend a precise change to the SYSTEM PROMPT that would reduce that risk in future generations.
+Output format:
+RISK: <one-sentence concrete failure risk>
+PROMPT CHANGE: <one-sentence change to the SYSTEM PROMPT>
 
-Do not optimize for explanations, formatting elegance, or verbosity except where they affect executable correctness. Do not rewrite or patch the submitted code directly; provide prompt-level feedback for the optimizer.
-IMMUTABLE REQUIREMENTS:
-- The generated solution must be Python.
-- The final response must contain exactly one fenced Python code block.
-- Prompt optimization must preserve these requirements verbatim.
-- Never recommend C++, another programming language, explanations, or text outside the code block""")
+If there are no material risks, output:
+NO MATERIAL RISKS
+
+Constraints for your critique:
+- Perform only the minimum analysis required and keep internal deliberation concise.
+- Use at most 400 words.
+- Do not restate the problem or solution.
+- Do not explain correct parts of the solution.
+- Do not derive an alternative algorithm.
+- Do not rewrite or patch the submitted code.
+- Do not discuss style, formatting, or verbosity unless they affect correctness.
+- Prioritize definite defects over speculative concerns.
+- Return only the risk and prompt-change pairs.
+
+The optimized SYSTEM PROMPT must preserve these requirements:
+- The generated solution uses Python.
+- The generated response contains exactly one fenced Python code block.
+- The generated response contains no explanations outside the code block.
+- Do not recommend another programming language or removal of these requirements.
+- The generated code must contain no comments.""")
     apiKey: Optional[str]       = Field(default=None)
     textGradApiKey: Optional[str] = Field(default=None)
 

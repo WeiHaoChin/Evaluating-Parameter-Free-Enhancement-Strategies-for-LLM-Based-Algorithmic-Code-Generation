@@ -415,29 +415,47 @@ function displayResults(data) {
 
   // Error Breakdown
   errorBreakdown.innerHTML = '';
-  for (const [mode, errors] of Object.entries(summary.by_error_type)) {
-    const modeDiv = document.createElement('div');
-    modeDiv.className = 'error-mode-section';
+  const errorTypesByMode = summary.by_error_type || {};
+  const preferredModes = ['baseline', 'rag_only', 'textgrad_only', 'full'];
+  const modes = [
+    ...preferredModes.filter((mode) => mode in errorTypesByMode),
+    ...Object.keys(errorTypesByMode).filter((mode) => !preferredModes.includes(mode)),
+  ];
+  const preferredOutcomes = [
+    'PASSED',
+    'WRONG_ANSWER',
+    'TIME_LIMIT_EXCEEDED',
+    'RUNTIME_ERROR',
+    'COMPILATION_ERROR',
+  ];
+  const availableOutcomes = new Set(
+    modes.flatMap((mode) => Object.keys(errorTypesByMode[mode] || {}))
+  );
+  const outcomes = [
+    ...preferredOutcomes.filter((outcome) => availableOutcomes.has(outcome)),
+    ...[...availableOutcomes].filter((outcome) => !preferredOutcomes.includes(outcome)),
+  ];
 
-    const title = document.createElement('h4');
-    title.textContent = mode.replace(/_/g, ' ').toUpperCase();
-    modeDiv.appendChild(title);
-
+  if (modes.length > 0 && outcomes.length > 0) {
     const table = document.createElement('table');
     table.className = 'error-table';
-
     const headerRow = table.insertRow();
-    headerRow.innerHTML = '<th>Test Case Outcome</th><th>Test Cases</th>';
-    for (const [errorType, count] of Object.entries(errors)) {
+    ['Test Case Outcome', ...modes.map(formatModeLabel)].forEach((label) => {
+      const header = document.createElement('th');
+      header.textContent = label;
+      headerRow.appendChild(header);
+    });
+
+    outcomes.forEach((outcome) => {
       const row = table.insertRow();
       const outcomeCell = row.insertCell();
-      const countCell = row.insertCell();
-      outcomeCell.textContent = errorType.replace(/_/g, ' ');
-      countCell.textContent = count;
-    }
-
-    modeDiv.appendChild(table);
-    errorBreakdown.appendChild(modeDiv);
+      outcomeCell.textContent = outcome.replace(/_/g, ' ');
+      modes.forEach((mode) => {
+        const countCell = row.insertCell();
+        countCell.textContent = errorTypesByMode[mode]?.[outcome] ?? 0;
+      });
+    });
+    errorBreakdown.appendChild(table);
   }
 
   // Individual Problem Results
@@ -514,41 +532,105 @@ function displayProblemResults(results) {
   // Add result rows
   for (const result of results) {
     const problem = result.problem || {};
-    const modeResult = (result.modes || {}).baseline || {};
+    const modes = result.modes || {};
+    const modeNames = ['baseline', 'rag_only', 'textgrad_only', 'full'];
+    const baselinePassRate = getPassRate(modes.baseline);
 
     const row = table.insertRow();
-    row.className = modeResult.passed ? 'row-passed' : 'row-failed';
+    row.className = modeNames.every((mode) => isPassAtOne(modes[mode]))
+      ? 'row-all-passed'
+      : 'row-mixed';
 
-    const passedStatus = modeResult.passed ? '✓' : '✗';
-    const passRatePercent = (modeResult.pass_rate * 100).toFixed(1);
-    const textGradStatus = modeResult.textgrad_included ? 'Yes' : 'No';
-    const ragContextStatus = modeResult.rag_context_included ? 'Yes' : 'No';
-    const errorType = modeResult.error_type || '-';
+    const problemCell = row.insertCell();
+    problemCell.textContent = problem.title || 'Untitled problem';
+    problemCell.title = problem.title || '';
 
-    row.innerHTML = `
-      <td title="${problem.title}">${problem.title}</td>
-      <td>${formatModePassRate(result.modes?.baseline)}</td>
-      <td>${formatModePassRate(result.modes?.rag_only)}</td>
-      <td>${formatModePassRate(result.modes?.textgrad_only)}</td>
-      <td>${formatModePassRate(result.modes?.full)}</td>
-    `;
+    modeNames.forEach((mode) => {
+      const cell = row.insertCell();
+      const passed = isPassAtOne(modes[mode]);
+      cell.className = passed ? 'mode-cell mode-cell-passed' : 'mode-cell mode-cell-failed';
+      cell.appendChild(createModePassRateContent(
+        modes[mode],
+        mode === 'baseline' ? null : baselinePassRate
+      ));
+    });
   }
 
   problemResultsContainer.appendChild(table);
 }
 
-function formatModePassRate(modeResult) {
-  const passRate = Number(modeResult?.pass_rate);
+function isPassAtOne(modeResult) {
+  return modeResult?.passed === true;
+}
+
+function getPassRate(modeResult) {
+  const rawPassRate = modeResult?.pass_rate;
+  if (rawPassRate === null || rawPassRate === undefined) {
+    return null;
+  }
+  const passRate = Number(rawPassRate);
+  return Number.isFinite(passRate) ? passRate : null;
+}
+
+function createModePassRateContent(modeResult, baselinePassRate) {
+  const container = document.createElement('div');
+  container.className = 'mode-result-content';
+  const value = document.createElement('span');
+  value.className = 'mode-pass-rate';
+  const passRate = getPassRate(modeResult);
   const passedTests = Number(modeResult?.passed_tests);
   const totalTests = Number(modeResult?.total_tests);
   if (
-    Number.isFinite(passRate)
+    passRate !== null
     && Number.isInteger(passedTests)
     && Number.isInteger(totalTests)
   ) {
-    return `${passedTests}/${totalTests} (${(passRate * 100).toFixed(1)}%)`;
+    value.textContent = `${passedTests}/${totalTests} (${(passRate * 100).toFixed(1)}%)`;
+  } else {
+    value.textContent = passRate !== null ? `${(passRate * 100).toFixed(1)}%` : '—';
   }
-  return Number.isFinite(passRate) ? `${(passRate * 100).toFixed(1)}%` : '—';
+  if (
+    modeResult?.error_type === 'RUNTIME_ERROR'
+    && Number.isInteger(passedTests)
+    && Number.isInteger(totalTests)
+  ) {
+    value.textContent = `${passedTests}/${totalTests} (Runtime Error)`;
+  } else if (modeResult?.error_type) {
+    value.textContent += ` (${formatOutcomeLabel(modeResult.error_type)})`;
+  }
+  container.appendChild(value);
+
+  if (baselinePassRate !== null && passRate !== null) {
+    const deltaPoints = (passRate - baselinePassRate) * 100;
+    const comparison = document.createElement('span');
+    comparison.className = deltaPoints > 0
+      ? 'baseline-delta baseline-delta-increased'
+      : deltaPoints < 0
+        ? 'baseline-delta baseline-delta-decreased'
+        : 'baseline-delta baseline-delta-unchanged';
+    const indicator = deltaPoints > 0 ? '↑' : deltaPoints < 0 ? '↓' : '→';
+    const sign = deltaPoints > 0 ? '+' : '';
+    comparison.textContent = `${indicator} ${sign}${deltaPoints.toFixed(1)} pp vs baseline`;
+    container.appendChild(comparison);
+  }
+  return container;
+}
+
+function formatModeLabel(mode) {
+  const labels = {
+    baseline: 'Baseline',
+    rag_only: 'RAG Only',
+    textgrad_only: 'TextGrad Only',
+    full: 'RAG + TextGrad',
+  };
+  return labels[mode] || mode.replace(/_/g, ' ').toUpperCase();
+}
+
+function formatOutcomeLabel(outcome) {
+  return outcome
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function exportResults() {

@@ -1,13 +1,17 @@
 import json
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from benchmark.metrics import compute_metrics
 from benchmark.logger import append_test_case, _compact_results
 from llm_clients import OllamaLLM
 import rag_handler
-from solver import summarize_test_outcomes
+from solver import evaluate_response, summarize_test_outcomes
+from benchmark.runner import run_benchmark
 
 
 class FakeOllamaClient:
@@ -21,13 +25,90 @@ class FakeOllamaClient:
 
 
 class GenerationMetadataTests(unittest.TestCase):
+    def test_benchmark_pairs_graph_initial_answers_with_refined_modes(self):
+        problem = {
+            "id": "paired", "title": "Paired", "statement": "problem",
+            "difficulty": "easy", "platform": "test", "starter_code": None,
+            "evaluation_sample": {"input_output": {}},
+        }
+        settings = SimpleNamespace(
+            systemPrompt="system", model="main", temperature=0.0,
+            maxOutputTokens=100, textGradInternalMaxOutputTokens=100,
+            textGradModel="critic", textGradLoops=1,
+            textGradLossPrompt="loss", apiKey=None, textGradApiKey=None,
+            dict=lambda: {},
+        )
+
+        def fake_pipeline(**kwargs):
+            is_full = kwargs["rag"]
+            label = "full" if is_full else "textgrad_only"
+            initial = "B" if is_full else "A"
+            final = "B-prime" if is_full else "A-prime"
+            return {
+                "response": final,
+                "textgrad_initial_response": initial,
+                "generation_records": [{
+                    "model": "main", "mode": label,
+                    "call_type": "initial_generation",
+                    "client_duration_ns": 1_000_000,
+                }],
+                "passed": True, "pass_rate": 1.0,
+                "passed_tests": 1, "total_tests": 1,
+                "graded_list": [[True]], "error_type": None,
+                "test_outcome_counts": {"PASSED": 1},
+                "rag_context_included": is_full,
+                "rag_retrieved_data": ["context"] if is_full else [],
+                "textgrad_improved_system_prompt": "improved",
+                "latency_ms": 10,
+                "timings": {
+                    "retrieval_ms": 2 if is_full else 0,
+                    "retrieval_cache_hit": False,
+                },
+            }
+
+        def fake_evaluate(response, _sample):
+            return ({
+                "generated_code": [[response]], "passed": True,
+                "pass_rate": 1.0, "passed_tests": 1, "total_tests": 1,
+                "graded_list": [[True]], "error_type": None,
+                "test_outcome_counts": {"PASSED": 1},
+                "metrics": {"pass@1": 1.0}, "metadata": [],
+            }, 3.0)
+
+        with (
+            patch("benchmark.runner.is_parquet_prefetched", return_value=False),
+            patch("benchmark.runner.load_lcb_problems", return_value=[problem]),
+            patch("benchmark.runner.run_pipeline", side_effect=fake_pipeline) as pipeline,
+            patch("benchmark.runner.evaluate_response", side_effect=fake_evaluate),
+        ):
+            result = asyncio.run(run_benchmark(n=1, settings=settings))
+
+        modes = result["results"][0]["modes"]
+        self.assertEqual(list(modes), [
+            "baseline", "rag_only", "textgrad_only", "full"
+        ])
+        self.assertEqual(modes["baseline"]["response"], "A")
+        self.assertEqual(modes["textgrad_only"]["response"], "A-prime")
+        self.assertEqual(modes["rag_only"]["response"], "B")
+        self.assertEqual(modes["full"]["response"], "B-prime")
+        self.assertNotIn("textgrad_initial_response", modes["textgrad_only"])
+        self.assertNotIn("textgrad_initial_response", modes["full"])
+        self.assertEqual(pipeline.call_count, 2)
+        self.assertTrue(all(
+            call.kwargs["textgrad"] for call in pipeline.call_args_list
+        ))
+        self.assertEqual(
+            modes["baseline"]["generation_records"][0]["call_type"],
+            "final_generation",
+        )
+
     def test_rag_similarity_cutoff_keeps_boundary_and_higher_results(self):
         class FakeCollection:
             def query(self, **_kwargs):
                 return {
                     "documents": [["below", "boundary", "above"]],
                     "metadatas": [[{}, {}, {}]],
-                    "distances": [[0.201, 0.2, 0.1]],
+                    "distances": [[0.251, 0.25, 0.1]],
                 }
 
         previous = rag_handler._chroma_collection
@@ -171,6 +252,27 @@ class GenerationMetadataTests(unittest.TestCase):
         self.assertEqual(counts["TIME_LIMIT_EXCEEDED"], 1)
         self.assertEqual(counts["RUNTIME_ERROR"], 1)
         self.assertEqual(primary_error, "RUNTIME_ERROR")
+
+    def test_runtime_error_uses_declared_testcase_count(self):
+        sample = {
+            "input_output": json.dumps({
+                "inputs": [str(index) for index in range(43)],
+                "outputs": [str(index) for index in range(43)],
+                "fn_name": None,
+            })
+        }
+        with patch(
+            "solver.codegen_metrics",
+            return_value=({}, {0: [[-4]]}, []),
+        ):
+            result, _ = evaluate_response("```python\nraise RuntimeError\n```", sample)
+
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["passed_tests"], 0)
+        self.assertEqual(result["total_tests"], 43)
+        self.assertEqual(result["pass_rate"], 0.0)
+        self.assertEqual(result["error_type"], "RUNTIME_ERROR")
+        self.assertEqual(result["test_outcome_counts"]["RUNTIME_ERROR"], 1)
 
     def test_benchmark_retains_mixed_test_outcomes(self):
         results = [{

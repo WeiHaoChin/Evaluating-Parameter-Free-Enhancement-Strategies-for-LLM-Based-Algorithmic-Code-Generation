@@ -54,6 +54,20 @@ def summarize_test_outcomes(test_results: list) -> tuple[int, dict[str, int], Op
     return counts["PASSED"], counts, primary_error
 
 
+def count_evaluation_tests(evaluation_sample: dict) -> int:
+    """Return the declared testcase count, even if evaluation exits early."""
+    input_output = evaluation_sample.get("input_output", {})
+    if isinstance(input_output, str):
+        try:
+            input_output = json.loads(input_output)
+        except (TypeError, ValueError):
+            return 0
+    if not isinstance(input_output, dict):
+        return 0
+    inputs = input_output.get("inputs")
+    return len(inputs) if isinstance(inputs, list) else 0
+
+
 # ── LLM caller ────────────────────────────────────────────────────────────────
 
 def call_llm(
@@ -221,6 +235,48 @@ def build_task_prompt(problem: str, starter_code: Optional[str]) -> str:
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────
 
+def evaluate_response(response: str, evaluation_sample: dict) -> tuple[dict, float]:
+    """Judge one generated response and return result fields plus elapsed time."""
+    generated_code_snippets = [[extract_code(response)]]
+    judging_started = time.perf_counter()
+    metrics, results, final_metadata = codegen_metrics(
+        [evaluation_sample], generated_code_snippets, k_list=[1],
+        num_process_evaluate=1, timeout=10,
+    )
+    parsed_metadata = []
+    for item in final_metadata:
+        cleaned_list = []
+        for value in item:
+            if isinstance(value, str):
+                try:
+                    cleaned_list.append(json.loads(value))
+                except Exception:
+                    cleaned_list.append(value)
+            elif isinstance(value, dict):
+                cleaned_list.append(value)
+            else:
+                cleaned_list.append(value)
+        parsed_metadata.append(cleaned_list)
+
+    test_results = results[0][0]
+    pass_count, test_outcome_counts, error_type = summarize_test_outcomes(test_results)
+    total_tests = max(len(test_results), count_evaluation_tests(evaluation_sample))
+    passed_all = total_tests > 0 and pass_count == total_tests
+    judging_duration_ms = (time.perf_counter() - judging_started) * 1000
+    return {
+        "generated_code": generated_code_snippets,
+        "passed": passed_all,
+        "pass_rate": pass_count / total_tests if total_tests else 0.0,
+        "passed_tests": pass_count,
+        "total_tests": total_tests,
+        "graded_list": results[0] if results else [],
+        "error_type": error_type,
+        "test_outcome_counts": test_outcome_counts,
+        "metrics": metrics,
+        "metadata": parsed_metadata,
+    }, judging_duration_ms
+
+
 def run_pipeline(
     problem: str,
     evaluation_sample: list,
@@ -236,7 +292,6 @@ def run_pipeline(
     temperature: float = 0.0,
     starter_code: Optional[str] = None,
     rag_context_cache: Optional[MutableMapping[str, dict]] = None,
-    initial_response: Optional[str] = None,
     progress_callback: Optional[Callable[[str, str], None]] = None,
     max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
     textgrad_internal_max_output_tokens: int = DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
@@ -314,7 +369,7 @@ def run_pipeline(
     if textgrad:
         logger.info("Running TextGrad...")
         try:
-            response, improved_system_prompt = run_textgrad_sync(
+            response, improved_system_prompt, initial_response = run_textgrad_sync(
                 prompt_text=formatted_prompt,
                 system_prompt=system_prompt,
                 loops=textgrad_loops,
@@ -324,7 +379,6 @@ def run_pipeline(
                 textGrad_api_key=textgrad_api_key,
                 loss_prompt=textgrad_loss_prompt,
                 temperature=temperature,
-                initial_answer=initial_response,
                 progress_callback=progress_callback,
                 return_details=True,
                 max_output_tokens=max_output_tokens,
@@ -363,10 +417,9 @@ def run_pipeline(
     # "outputs": [t[1] for t in test_cases] if isinstance(test_cases[0], (tuple, list)) else test_cases.get("outputs", []),
     # "fn_name": test_cases.get("fn_name", None)  # Competitive programming problems use standard I/O streams, so fn_name is None
     # }
-    evaluation_sample = [evaluation_sample] # evaluation_sample passed into run_pipeline
-    generated_code_snippets = [[extract_code(response)]]
-
     report("judging", "Running generated code against test cases")
+    evaluation_sample = [evaluation_sample]
+    generated_code_snippets = [[extract_code(response)]]
     judging_started = time.perf_counter()
     metrics, results, final_metadata = codegen_metrics(
         evaluation_sample,
@@ -394,8 +447,9 @@ def run_pipeline(
     logger.debug("Evaluation complete: metrics=%s, result_groups=%d", metrics, len(results))
     test_results = results[0][0]
     pass_count, test_outcome_counts, error_type = summarize_test_outcomes(test_results)
-    pass_rate = pass_count / len(test_results) if test_results else 0.0
-    passed_all = all(r is True for r in test_results) if test_results else False
+    total_tests = max(len(test_results), count_evaluation_tests(evaluation_sample[0]))
+    pass_rate = pass_count / total_tests if total_tests else 0.0
+    passed_all = total_tests > 0 and pass_count == total_tests
     graded     = results[0] if results else []  # results is a dict keyed by problem index
     judging_duration_ms = (time.perf_counter() - judging_started) * 1000
     latency_ms = (time.perf_counter() - pipeline_started) * 1000
@@ -412,13 +466,14 @@ def run_pipeline(
         "passed":               passed_all,
         "pass_rate":            pass_rate,
         "passed_tests":         pass_count,
-        "total_tests":          len(test_results),
+        "total_tests":          total_tests,
         "graded_list":          graded,
         "error_type":           error_type,
         "test_outcome_counts":  test_outcome_counts,
         "rag_context_included": bool(rag_context),
         "rag_retrieved_data":  rag_results,
         "textgrad_improved_system_prompt": improved_system_prompt,
+        "textgrad_initial_response": initial_response if textgrad else None,
         "latency_ms":           latency_ms,
         "timings": {
             "end_to_end_ms": latency_ms,

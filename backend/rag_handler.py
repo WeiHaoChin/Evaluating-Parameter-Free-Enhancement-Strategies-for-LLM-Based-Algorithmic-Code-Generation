@@ -17,7 +17,7 @@ _chroma_collection = None
 DATA_ROOT = Path(__file__).parent / "data"
 CHROMA_DB_PATH = DATA_ROOT / "rag_chunks" / "chroma_db"
 COLLECTION_NAME = "cp_rag"  # Default collection name, matches RAG pipeline
-DEFAULT_MIN_SIMILARITY = float(os.getenv("RAG_MIN_SIMILARITY", "0.8"))
+DEFAULT_MIN_SIMILARITY = float(os.getenv("RAG_MIN_SIMILARITY", "0.75"))
 
 
 def initialize_rag(

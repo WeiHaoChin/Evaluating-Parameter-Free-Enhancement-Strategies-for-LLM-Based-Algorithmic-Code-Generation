@@ -10,7 +10,7 @@ from .fetch_lcb import (
 from .prefetch_lcb import is_parquet_prefetched
 from .metrics import compute_metrics
 from schemas import Settings
-from solver import run_pipeline
+from solver import evaluate_response, run_pipeline
 
 
 MODES = [
@@ -152,7 +152,7 @@ async def run_benchmark(
             "modes": {},
         }
 
-        async def run_mode(mode: dict, initial_response: Optional[str] = None) -> tuple[str, dict]:
+        async def run_mode(mode: dict) -> tuple[str, dict]:
             """Run one blocking solver invocation in a worker thread."""
             mode_label = mode["label"]
             def report(state: str, detail: str) -> None:
@@ -180,7 +180,6 @@ async def run_benchmark(
                     textgrad_api_key=settings.textGradApiKey,
                     starter_code=problem.get("starter_code"),
                     rag_context_cache=rag_context_cache,
-                    initial_response=initial_response,
                     progress_callback=report,
                 )
                 elapsed_ms = (time.perf_counter() - start_time) * 1000
@@ -204,23 +203,96 @@ async def run_benchmark(
                 report("error", str(e))
             return mode_label, mode_result
 
-        # The independent initial generations start together. They are then
-        # reused as the first TextGrad answer for the matching prompt: baseline
-        # for textgrad_only and RAG for full. This removes two main-model calls
-        # per problem while retaining a fair RAG + TextGrad comparison.
-        baseline_task = asyncio.create_task(run_mode(MODES[0]))
-        rag_task = asyncio.create_task(run_mode(MODES[1]))
-        initial_modes = await asyncio.gather(baseline_task, rag_task)
-        problem_results["modes"].update(dict(initial_modes))
-
-        textgrad_task = asyncio.create_task(
-            run_mode(MODES[2], problem_results["modes"]["baseline"].get("response"))
-        )
-        full_task = asyncio.create_task(
-            run_mode(MODES[3], problem_results["modes"]["rag_only"].get("response"))
-        )
+        # Each branch performs its initial generation inside BlackboxLLM so the
+        # exact same graph-backed answer can be judged as the unrefined mode and
+        # then refined by TextGrad. This preserves paired A -> A' and B -> B'
+        # comparisons without a duplicate main-model generation.
+        textgrad_task = asyncio.create_task(run_mode(MODES[2]))
+        full_task = asyncio.create_task(run_mode(MODES[3]))
         refined_modes = await asyncio.gather(textgrad_task, full_task)
         problem_results["modes"].update(dict(refined_modes))
+
+        async def build_initial_result(
+            refined_label: str, initial_label: str, rag_enabled: bool,
+        ) -> tuple[str, dict]:
+            refined = problem_results["modes"][refined_label]
+            initial_response = refined.get("textgrad_initial_response")
+            if not initial_response:
+                return initial_label, {
+                    "response": initial_response,
+                    "generation_records": [],
+                    "passed": False,
+                    "pass_rate": 0.0,
+                    "passed_tests": 0,
+                    "total_tests": 0,
+                    "error_type": "EXCEPTION",
+                    "exception": "TextGrad branch produced no initial response",
+                    "rag_context_included": bool(
+                        refined.get("rag_context_included")
+                    ),
+                    "rag_retrieved_data": refined.get("rag_retrieved_data", []),
+                    "textgrad_improved_system_prompt": None,
+                    "textgrad_included": False,
+                }
+
+            evaluation_fields, judging_ms = await asyncio.to_thread(
+                evaluate_response, initial_response, problem["evaluation_sample"]
+            )
+            initial_record = next((
+                record.copy() for record in refined.get("generation_records", [])
+                if record.get("call_type") == "initial_generation"
+            ), None)
+            records = []
+            generation_ms = 0.0
+            if initial_record is not None:
+                initial_record["mode"] = initial_label
+                initial_record["call_type"] = "final_generation"
+                records.append(initial_record)
+                generation_ms = (
+                    float(initial_record.get("client_duration_ns") or 0) / 1_000_000
+                )
+            retrieval_ms = (
+                float(refined.get("timings", {}).get("retrieval_ms") or 0)
+                if rag_enabled else 0.0
+            )
+            latency_ms = retrieval_ms + generation_ms + judging_ms
+            return initial_label, {
+                "response": initial_response,
+                "generation_records": records,
+                **evaluation_fields,
+                "rag_context_included": bool(refined.get("rag_context_included")),
+                "rag_retrieved_data": refined.get("rag_retrieved_data", []),
+                "textgrad_improved_system_prompt": None,
+                "textgrad_included": False,
+                "latency_ms": latency_ms,
+                "timings": {
+                    "end_to_end_ms": latency_ms,
+                    "retrieval_ms": retrieval_ms,
+                    "retrieval_cache_hit": bool(
+                        refined.get("timings", {}).get("retrieval_cache_hit")
+                    ) if rag_enabled else False,
+                    "generation_workflow_ms": generation_ms,
+                    "judging_ms": judging_ms,
+                },
+            }
+
+        baseline_mode = await build_initial_result(
+            "textgrad_only", "baseline", False
+        )
+        rag_mode = await build_initial_result("full", "rag_only", True)
+        problem_results["modes"].update(dict([baseline_mode, rag_mode]))
+        for initial_label in ("baseline", "rag_only"):
+            benchmark_status["modes"][initial_label].update({
+                "state": "complete", "detail": "Completed",
+            })
+        problem_results["modes"]["textgrad_only"].pop(
+            "textgrad_initial_response", None
+        )
+        problem_results["modes"]["full"].pop("textgrad_initial_response", None)
+        problem_results["modes"] = {
+            mode["label"]: problem_results["modes"][mode["label"]]
+            for mode in MODES
+        }
 
         all_results.append(problem_results)
         # The cache is only shared by this problem's RAG and combined modes.

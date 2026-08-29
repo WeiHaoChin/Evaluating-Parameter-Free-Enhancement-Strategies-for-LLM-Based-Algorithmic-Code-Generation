@@ -1283,27 +1283,11 @@ input[type="range"] {
   color: #94a3b8;
 }
 
+.outcome-breakdown-container {
+  overflow-x: auto;
+}
+
 .error-table {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.error-mode-section {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.error-mode-section h4 {
-  margin: 0;
-  color: #a5f3fc;
-  font-size: 0.95rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.error-table table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
@@ -1534,20 +1518,53 @@ input[type="range"] {
   color: #cbd5e1;
 }
 
-.problem-results-table .row-passed {
+.problem-results-table .row-all-passed {
   background: rgba(16, 185, 129, 0.04);
 }
 
-.problem-results-table .row-passed:hover {
+.problem-results-table .row-all-passed:hover {
   background: rgba(16, 185, 129, 0.08);
 }
 
-.problem-results-table .row-failed {
-  background: rgba(239, 68, 68, 0.04);
+.problem-results-table .mode-cell {
+  border-left: 3px solid transparent;
 }
 
-.problem-results-table .row-failed:hover {
-  background: rgba(239, 68, 68, 0.08);
+.problem-results-table .mode-cell-passed {
+  background: rgba(16, 185, 129, 0.12);
+  border-left-color: #10b981;
+}
+
+.problem-results-table .mode-cell-failed {
+  background: rgba(239, 68, 68, 0.12);
+  border-left-color: #ef4444;
+}
+
+.mode-result-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.mode-pass-rate {
+  font-weight: 600;
+}
+
+.baseline-delta {
+  font-size: 0.75rem;
+}
+
+.baseline-delta-increased {
+  color: #047857;
+}
+
+.baseline-delta-decreased {
+  color: #b91c1c;
+}
+
+.baseline-delta-unchanged {
+  color: #64748b;
 }
 
 .problem-results-table tbody tr:last-child td {
@@ -1712,7 +1729,6 @@ body {
 .metric-label,
 .difficulty-breakdown h4,
 .platform-breakdown h4,
-.error-mode-section h4,
 .history-timestamp,
 .problem-results-table th,
 .error-table th,
@@ -1864,7 +1880,7 @@ body {
 }
 
 .mode-status-card[data-state="complete"],
-.problem-results-table .row-passed {
+.problem-results-table .row-all-passed {
   background: var(--success-soft);
   border-color: #a7bdae;
 }
@@ -1884,7 +1900,6 @@ body {
 
 .error-message,
 .mode-status-card[data-state="error"],
-.problem-results-table .row-failed,
 .alert-error {
   background: var(--danger-soft);
   border-color: #d7aaa6;
