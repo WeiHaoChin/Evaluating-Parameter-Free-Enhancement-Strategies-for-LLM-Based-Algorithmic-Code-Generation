@@ -14,6 +14,11 @@ from dataclasses import dataclass, asdict
 
 import httpx
 from bs4 import BeautifulSoup
+from backend.RAG.pipeline.rag_pipeline import (
+    extract_codeforces_problem_editorial,
+    html_to_text,
+    is_useful_editorial,
+)
 try:
     import cloudscraper
 except ImportError:
@@ -206,7 +211,7 @@ class CodeforcesScraper:
         return result
 
     # ── Step 3: Find and scrape editorial ─────────────────────────────────
-    async def find_editorial(self, contest_id: int) -> tuple[str, str]:
+    async def find_editorial(self, contest_id: int, problem_index: str) -> tuple[str, str]:
         """Returns (editorial_url, editorial_html). Searches contest blog posts."""
         # CF editorials are usually posted by the problem setter as blog entries
         if not self.cf_scraper:
@@ -252,7 +257,12 @@ class CodeforcesScraper:
         # Extract the blog content
         content = ed_soup.find("div", class_="ttypography")
         if content:
-            return editorial_url, str(content)
+            problem_html = extract_codeforces_problem_editorial(
+                str(content), f"{contest_id}{problem_index}"
+            )
+            if is_useful_editorial(html_to_text(problem_html)):
+                return editorial_url, problem_html
+            return editorial_url, ""
         return editorial_url, ""
 
     # ── Step 4: Orchestrate scraping ───────────────────────────────────────
@@ -268,9 +278,18 @@ class CodeforcesScraper:
 
             out_file = self.output_dir / f"{problem_id}.json"
             if out_file.exists():
-                logger.debug(f"[{i+1}/{len(problems_meta)}] Skipping {problem_id} (cached)")
-                results.append(json.loads(out_file.read_text(encoding="utf-8")))
-                continue
+                cached = json.loads(out_file.read_text(encoding="utf-8"))
+                ed_soup = BeautifulSoup(cached.get("editorial_html", ""), "html.parser")
+                tutorial_codes = {
+                    node.get("problemcode")
+                    for node in ed_soup.select(".problemTutorial[problemcode]")
+                }
+                contest_wide_editorial = len(tutorial_codes) > 1
+                if cached.get("statement_html") and not contest_wide_editorial:
+                    logger.debug(f"[{i+1}/{len(problems_meta)}] Skipping {problem_id} (valid cache)")
+                    results.append(cached)
+                    continue
+                logger.info(f"[{i+1}/{len(problems_meta)}] Refreshing invalid cache for {problem_id}")
 
             logger.info(f"[{i+1}/{len(problems_meta)}] Scraping {problem_id}...")
 
@@ -291,7 +310,7 @@ class CodeforcesScraper:
             problem.examples = stmt_data.get("examples", [])
 
             # Editorial (cached per contest to avoid re-fetching)
-            ed_url, ed_html = await self.find_editorial(contest_id)
+            ed_url, ed_html = await self.find_editorial(contest_id, index)
             problem.editorial_url = ed_url
             problem.editorial_html = ed_html
 

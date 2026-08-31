@@ -47,6 +47,7 @@ async def run_scrapers(sources: list[str], args: argparse.Namespace):
         async with USACOScraper(
             output_dir=str(DATA_ROOT / "usaco"),
             max_contests=args.max_usaco_contests,
+            start_contest=args.start_usaco_contest,
         ) as s:
             logger.info("=" * 60)
             logger.info("SCRAPER: USACO")
@@ -54,9 +55,22 @@ async def run_scrapers(sources: list[str], args: argparse.Namespace):
             await s.scrape()
 
     if "atcoder" in sources:
+        excluded_ids = set()
+        max_atcoder = args.max_ac
+        if args.additional_ac:
+            for path in (DATA_ROOT / "atcoder").glob("*.json"):
+                try:
+                    import json
+                    excluded_ids.add(json.loads(path.read_text(encoding="utf-8"))["problem_id"])
+                except (OSError, ValueError, KeyError):
+                    logger.warning("Could not read existing AtCoder ID from %s", path)
+            max_atcoder = args.additional_ac
+            logger.info("Excluding %d existing AtCoder IDs; requesting %d additional problems",
+                        len(excluded_ids), max_atcoder)
         async with AtCoderScraper(
             output_dir=str(DATA_ROOT / "atcoder"),
-            max_problems=args.max_ac,
+            max_problems=max_atcoder,
+            exclude_problem_ids=excluded_ids,
         ) as s:
             logger.info("=" * 60)
             logger.info("SCRAPER: AtCoder")
@@ -174,7 +188,11 @@ Examples:
     # Scraper limits
     parser.add_argument("--max-cf", type=int, default=500)
     parser.add_argument("--max-ac", type=int, default=300)
+    parser.add_argument("--additional-ac", type=int, default=0,
+                        help="Scrape this many additional AtCoder problems, excluding existing IDs")
     parser.add_argument("--max-usaco-contests", type=int, default=20)
+    parser.add_argument("--start-usaco-contest", type=int, default=1,
+                        help="1-based archive position to resume USACO scraping from")
     parser.add_argument("--data-root", type=str, default="data")
     return parser.parse_args()
 

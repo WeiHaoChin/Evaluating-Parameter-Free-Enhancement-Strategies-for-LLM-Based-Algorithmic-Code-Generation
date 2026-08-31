@@ -251,7 +251,7 @@ def evaluate_response(response: str, evaluation_sample: dict) -> tuple[dict, flo
     judging_started = time.perf_counter()
     metrics, results, final_metadata = codegen_metrics(
         [evaluation_sample], generated_code_snippets, k_list=[1],
-        num_process_evaluate=1, timeout=10,
+        num_process_evaluate=1, timeout=6,
     )
     parsed_metadata = []
     for item in final_metadata:
@@ -439,7 +439,7 @@ def run_pipeline(
         generated_code_snippets,
         k_list=[1],
         num_process_evaluate=1,  # Windows-safe
-        timeout=10,
+        timeout=6,
     )
     parsed_metadata = []
     for item in final_metadata:

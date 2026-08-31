@@ -43,19 +43,21 @@ Report at most 5 material failure risks:
 
 Output format:
 RISK: <one-sentence concrete failure risk>
-PROMPT CHANGE: <one-sentence change to the SYSTEM PROMPT>
+EVIDENCE: <one-sentence condition, invariant, or complexity bound demonstrating it>
+PROMPT CHANGE: <one-sentence instruction for regeneration>
 
 If there are no material risks, output:
 NO MATERIAL RISKS
 
-Do not recommend problem-specific algorithms, formulas, variable names, data structures, constants, or implementation steps in PROMPT CHANGE. Prompt changes must remain general and reusable across unrelated competitive-programming problems.
+PROMPT CHANGE may refer to the current problem's violated invariant or required
+correction, but must not provide complete solution code or unnecessarily replace
+parts of the approach that are not implicated by the defect.
 
 Constraints for your critique:
-- Perform only the minimum analysis required and keep internal deliberation concise.
 - Use at most 400 words.
 - Do not restate the problem or solution.
 - Do not explain correct parts of the solution.
-- Do not derive an alternative algorithm.
+- Do not include a complete alternative algorithm in the returned critique.
 - Do not rewrite or patch the submitted code.
 - Do not discuss style, formatting, or verbosity unless they affect correctness.
 - Prioritize definite defects over speculative concerns.

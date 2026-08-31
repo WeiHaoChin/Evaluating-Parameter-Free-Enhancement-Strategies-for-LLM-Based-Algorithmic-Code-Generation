@@ -16,6 +16,8 @@ from dataclasses import dataclass, asdict, field
 from typing import Optional, Literal
 from html.parser import HTMLParser
 
+from bs4 import BeautifulSoup
+
 logger = logging.getLogger(__name__)
 
 # ─── HTML → Text ─────────────────────────────────────────────────────────────
@@ -81,6 +83,90 @@ def latex_to_text(latex: str) -> str:
     text = re.sub(r"[{}]", "", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+def clean_usaco_editorial_mdx(mdx: str) -> str:
+    """Preserve useful USACO Guide prose/Python while removing MDX UI markup."""
+    if not mdx:
+        return ""
+
+    text = re.sub(r"^\s*(?:import|export)\s+.*$", "", mdx, flags=re.MULTILINE)
+
+    # This project generates Python solutions. Avoid tripling equivalent code
+    # in each chunk while retaining the surrounding language-neutral analysis.
+    for section in ("CPPSection", "JavaSection"):
+        text = re.sub(
+            rf"<{section}\b[^>]*>.*?</{section}\s*>",
+            "",
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+
+    # Interactive components do not contribute retrievable algorithm content.
+    text = re.sub(
+        r"<[A-Z][A-Za-z0-9]*\b[^>]*/>", "", text, flags=re.DOTALL
+    )
+
+    # LanguageSection, PySection, Spoiler, Info, Warning, and similar wrappers
+    # are presentation only. Remove their tags, not their contents.
+    text = re.sub(r"</?[A-Z][A-Za-z0-9]*\b[^>]*>", "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+EDITORIAL_BOILERPLATE = (
+    "tutorial is loading",
+    "back to home",
+    "all submissions",
+    "virtual standings",
+    "contest duration",
+)
+
+
+def is_useful_editorial(text: str, min_tokens: int = 50) -> bool:
+    """Reject navigation shells, unloaded widgets, and other non-editorials."""
+    normalized = re.sub(r"\s+", " ", text).strip().lower()
+    if estimate_tokens(normalized) < min_tokens:
+        return False
+    boilerplate_hits = sum(marker in normalized for marker in EDITORIAL_BOILERPLATE)
+    meaningful = normalized.replace("tutorial is loading...", "")
+    return boilerplate_hits < 3 and estimate_tokens(meaningful) >= min_tokens
+
+
+def extract_codeforces_problem_editorial(html: str, problem_code: str) -> str:
+    """Extract one problem tutorial from a contest-wide Codeforces blog."""
+    if not html or not str(problem_code).strip():
+        return ""
+    soup = BeautifulSoup(html, "html.parser")
+    code = str(problem_code).strip()
+    index_text = re.sub(r"^\d+", "", code) or code
+    index = re.escape(index_text)
+    heading = re.compile(
+        rf"^(?:(?:tutorial|editorial|problem|solution)\s*(?:for\s*)?)?(?:problem\s*)?{index}(?:\b|\s*[-:.–—])",
+        re.IGNORECASE,
+    )
+    widget = soup.find("div", class_="problemTutorial", attrs={"problemcode": code})
+    if widget:
+        spoiler = widget.find_parent("div", class_="spoiler")
+        return str(spoiler or widget)
+    for spoiler in soup.select("div.spoiler"):
+        title = spoiler.select_one(".spoiler-title")
+        if title and heading.search(title.get_text(" ", strip=True)):
+            title.decompose()
+            return str(spoiler)
+
+    for node in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
+        if not heading.search(node.get_text(" ", strip=True)):
+            continue
+        pieces = []
+        for sibling in node.next_siblings:
+            if getattr(sibling, "name", None) in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                break
+            pieces.append(str(sibling))
+        candidate = "".join(pieces)
+        if is_useful_editorial(html_to_text(candidate)):
+            return candidate
+    return ""
 
 
 # ─── Chunking strategies ──────────────────────────────────────────────────────
@@ -203,8 +289,11 @@ def process_codeforces(doc: dict) -> list[Chunk]:
         ))
 
     # Chunk 3: Editorial
-    ed_text = html_to_text(doc.get("editorial_html", ""))
-    if ed_text:
+    ed_html = extract_codeforces_problem_editorial(
+        doc.get("editorial_html", ""), pid
+    )
+    ed_text = html_to_text(ed_html)
+    if is_useful_editorial(ed_text):
         for i, chunk_text_piece in enumerate(chunk_text(ed_text, max_tokens=512)):
             chunks.append(Chunk(
                 chunk_id=str(uuid.uuid4()),
@@ -227,6 +316,7 @@ def process_usaco(doc: dict) -> list[Chunk]:
         "problem_id": pid,
         "contest": doc.get("contest"),
         "division": doc.get("division"),
+        "difficulty": doc.get("difficulty") or doc.get("division"),
         "topics": doc.get("topics", []),
     }
 
@@ -247,8 +337,7 @@ def process_usaco(doc: dict) -> list[Chunk]:
     # Editorial (USACO.guide MDX)
     ed_raw = doc.get("editorial_html", "")
     if ed_raw:
-        # Strip MDX-specific syntax
-        ed_text = re.sub(r"<[A-Z][a-zA-Z]+[^>]*>.*?</[A-Z][a-zA-Z]+>", "", ed_raw, flags=re.DOTALL)
+        ed_text = clean_usaco_editorial_mdx(ed_raw)
         ed_text = html_to_text(ed_text) if "<" in ed_text else ed_text
         for i, t in enumerate(chunk_text(ed_text, max_tokens=600)):
             chunks.append(Chunk(
@@ -290,7 +379,7 @@ def process_atcoder(doc: dict) -> list[Chunk]:
             ))
 
     ed = html_to_text(doc.get("editorial_html", ""))
-    if ed:
+    if is_useful_editorial(ed):
         for i, t in enumerate(chunk_text(ed, max_tokens=600)):
             chunks.append(Chunk(
                 chunk_id=str(uuid.uuid4()),
@@ -316,8 +405,14 @@ def process_cp_algorithms(doc: dict) -> list[Chunk]:
         "complexity": doc.get("complexity"),
     }
 
+    title = str(doc.get("title", "")).strip().lower().rstrip("¶")
+    if title in {"code of conduct", "how to contribute", "tags"}:
+        return []
+
     # Prefer markdown source (cleaner for RAG)
     raw = doc.get("content_markdown") or html_to_text(doc.get("content_html", ""))
+    if raw and re.search(r'<meta\s+http-equiv=["\']refresh["\']', raw, re.IGNORECASE):
+        return []
     if raw:
         for i, t in enumerate(chunk_text(raw, max_tokens=600)):
             chunks.append(Chunk(
@@ -377,6 +472,8 @@ def process_cph(doc: dict) -> list[Chunk]:
             ))
 
     for j, code in enumerate(doc.get("code_examples", [])[:3]):
+        if estimate_tokens(code) < 50:
+            continue
         chunks.append(Chunk(
             chunk_id=str(uuid.uuid4()),
             source_id=cid,

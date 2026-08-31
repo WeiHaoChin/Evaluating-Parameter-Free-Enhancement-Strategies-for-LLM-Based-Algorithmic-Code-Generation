@@ -100,9 +100,14 @@ def run_textgrad(
         system_prompt,
         requires_grad=True,
         role_description=(
-            "General reusable competitive-programming generation guidance. "
-            "Optimize only general advice; never add a problem-specific algorithm, "
-            "formula, data structure, variable name, constant, or implementation step."
+        "The editable advisory portion of the system prompt used to regenerate a "
+        "Python solution for the current competitive-programming problem. Optimize "
+        "it to improve executable correctness and constraint compliance using only "
+        "demonstrable critic evidence. Make minimal changes and preserve guidance "
+        "not implicated by a verified defect. Do not add solution code, problem "
+        "restatements, output-format instructions, explanations, comments, or test "
+        "scaffolding. Do not modify or contradict the separate immutable generation "
+        "contract. Keep the complete advisory prompt within 120 words."
         ),
     )
     system_prompt_var = compose_constrained_system_prompt(advisory_prompt_var)

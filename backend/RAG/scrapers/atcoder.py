@@ -41,11 +41,13 @@ class AtCoderProblem:
 
 class AtCoderScraper:
     def __init__(self, output_dir: str = "data/atcoder", max_problems: int = 300,
-                 contest_types: tuple = ("abc", "arc", "agc")):
+                 contest_types: tuple = ("abc", "arc", "agc"),
+                 exclude_problem_ids: set[str] | None = None):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.max_problems = max_problems
         self.contest_types = contest_types
+        self.exclude_problem_ids = exclude_problem_ids or set()
         self.client = None
 
     async def __aenter__(self):
@@ -96,6 +98,8 @@ class AtCoderScraper:
         enriched = []
         for p in problems:
             pid = p.get("id", "")
+            if pid in self.exclude_problem_ids:
+                continue
             contest = p.get("contest_id", "")
             if not any(contest.startswith(ct) for ct in self.contest_types):
                 continue
@@ -154,21 +158,29 @@ class AtCoderScraper:
         return {}
 
     # ── Find editorial URL ────────────────────────────────────────────────
-    async def find_editorial_url(self, contest_id: str) -> str:
-        """AtCoder editorials are linked from the contest top page."""
-        url = f"{ATCODER_BASE}/contests/{contest_id}"
+    async def find_editorial_url(self, contest_id: str, problem_id: str) -> str:
+        """Return the problem-specific link from the contest editorial index."""
+        url = f"{ATCODER_BASE}/contests/{contest_id}/editorial?lang=en"
         html = await self._get(url)
         if not html:
             return ""
 
         soup = BeautifulSoup(html, "html.parser")
-        for a in soup.find_all("a", href=True):
-            text = a.get_text(strip=True).lower()
-            href = a["href"]
-            if "editorial" in text or "解説" in text:  # 解説 = editorial in Japanese
-                if href.startswith("http"):
-                    return href
-                return ATCODER_BASE + href
+        detail_path = re.compile(rf"^/contests/{re.escape(contest_id)}/editorial/\d+")
+        task_link = soup.find(
+            "a", href=re.compile(rf"/tasks/{re.escape(problem_id)}(?:\?|$)")
+        )
+        heading = task_link.find_parent("h3") if task_link else None
+        section = heading.find_next_sibling("div", class_="editorial-section") if heading else None
+        if section:
+            # Prefer a visible English official editorial, then any official
+            # problem-specific AtCoder editorial.
+            links = section.find_all("a", href=detail_path)
+            visible = [a for a in links if "lang-other" not in (a.find_parent("li") or {}).get("class", [])]
+            link = (visible or links or [None])[0]
+            if link:
+                href = link["href"]
+                return href if href.startswith("http") else ATCODER_BASE + href
 
         return ""
 
@@ -183,16 +195,15 @@ class AtCoderScraper:
 
         soup = BeautifulSoup(html, "html.parser")
 
-        # AtCoder editorial pages (official) — content in task-statement or editorial divs
+        # Do not fall back to a generic column or body: those selectors capture
+        # the contest navigation rather than the solution.
         for selector in ["div#editorial", "div.editorial", "div#task-statement",
-                         "div.col-sm-12", "article"]:
+                         "article", "#main-container .panel-body",
+                         "#main-container > .row > div.col-sm-12:not(#contest-nav-tabs)"]:
             content = soup.select_one(selector)
-            if content:
+            if content and len(content.get_text(" ", strip=True).split()) >= 50:
                 return editorial_url, str(content)
-
-        # Fallback: main content area
-        body = soup.find("body")
-        return editorial_url, str(body) if body else ""
+        return editorial_url, ""
 
     # ── Orchestrate ───────────────────────────────────────────────────────
     async def scrape(self) -> list[dict]:
@@ -201,7 +212,7 @@ class AtCoderScraper:
         results = []
 
         # Cache editorial URLs per contest
-        editorial_cache: dict[str, str] = {}
+        editorial_cache: dict[str, dict[str, str]] = {}
 
         for i, meta in enumerate(problems_meta):
             pid = meta["problem_id"]
@@ -209,9 +220,20 @@ class AtCoderScraper:
 
             out_file = self.output_dir / f"{pid}.json"
             if out_file.exists():
-                logger.debug(f"[{i+1}/{len(problems_meta)}] Skipping {pid} (cached)")
-                results.append(json.loads(out_file.read_text(encoding="utf-8")))
-                continue
+                cached = json.loads(out_file.read_text(encoding="utf-8"))
+                editorial_text = BeautifulSoup(
+                    cached.get("editorial_html", ""), "html.parser"
+                ).get_text(" ", strip=True).lower()
+                bad_editorial = (
+                    "contest duration" in editorial_text
+                    and "back to home" in editorial_text
+                )
+                problem_specific = bool(re.search(r"/editorial/\d+", cached.get("editorial_url", "")))
+                if cached.get("statement_html") and not bad_editorial and problem_specific:
+                    logger.debug(f"[{i+1}/{len(problems_meta)}] Skipping {pid} (valid cache)")
+                    results.append(cached)
+                    continue
+                logger.info(f"[{i+1}/{len(problems_meta)}] Refreshing invalid cache for {pid}")
 
             logger.info(f"[{i+1}/{len(problems_meta)}] Scraping {pid} (difficulty ~{meta['difficulty']:.0f})...")
 
@@ -230,9 +252,12 @@ class AtCoderScraper:
 
             # Editorial (cached per contest)
             if cid not in editorial_cache:
-                editorial_cache[cid] = await self.find_editorial_url(cid)
+                editorial_cache[cid] = {}
 
-            ed_url = editorial_cache[cid]
+            ed_url = editorial_cache[cid].get(pid)
+            if ed_url is None:
+                ed_url = await self.find_editorial_url(cid, pid)
+                editorial_cache[cid][pid] = ed_url
             ed_url, ed_html = await self.scrape_editorial(ed_url)
             problem.editorial_url = ed_url
             problem.editorial_html = ed_html
