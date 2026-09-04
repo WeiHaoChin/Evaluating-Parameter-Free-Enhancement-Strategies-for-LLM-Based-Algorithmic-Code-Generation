@@ -104,6 +104,22 @@ FYP/
 
 `backend/data` and `logs` are runtime locations and may be absent in a fresh checkout. The application creates the required data directories as their workflows run.
 
+## Prerequisites
+
+For the recommended Docker workflow, install only:
+
+- **Docker Desktop** with Linux containers and the WSL 2 backend enabled on Windows.
+- **Git** if you still need to clone the repository.
+
+Docker installs the project's Python runtime and packages while building the backend image. You do not need separate host installations of Python, Node.js, ChromaDB, PyTorch, or the packages in `requirements.txt`.
+
+You must also choose one model-access option:
+
+- **Local models:** install [Ollama](https://ollama.com/) separately on the host and pull at least one model. The backend container connects to it through `host.docker.internal:11434`.
+- **Remote models:** no local model server is required, but you must provide the appropriate provider API key in the Settings page.
+
+Internet access is required during the initial image build. It is also required when downloading embedding models or LiveCodeBench data, running the source scrapers, or calling a remote model. Allow sufficient disk space for the Docker images, PyTorch dependencies, Hugging Face cache, scraped corpus, and generated vector index.
+
 ## Quick start with Docker
 
 From the repository root:
