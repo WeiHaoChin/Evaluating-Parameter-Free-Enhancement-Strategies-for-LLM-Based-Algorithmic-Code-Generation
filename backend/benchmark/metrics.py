@@ -1,5 +1,4 @@
 # benchmark/metrics.py
-from typing import Any
 from collections import defaultdict
 
 

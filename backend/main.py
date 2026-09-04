@@ -10,9 +10,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
-
-from solver import call_llm, run_pipeline, build_rag_prompt
+from solver import call_llm, build_rag_prompt
 from TextGrad import run_textgrad, run_textgrad_sync
 from rag_handler import (
     format_rag_context,
@@ -33,7 +31,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-RAG_PIPELINE_PATH = Path(__file__).parent / "RAG" / "main.py"
 RAG_DATA_ROOT = Path(__file__).parent / "data"
 _rag_build_status = {
     "running": False, "error": None, "output": "", "percent": 0,
@@ -261,10 +258,10 @@ async def _build_rag_chunks() -> None:
 
 @app.post("/api/rag/build")
 async def build_rag_chunks():
-    """Rebuild RAG chunks, replacing the existing vector collection."""
+    """Scrape all sources and rebuild the complete local RAG knowledge base."""
     global _rag_build_task
     if _rag_build_status["running"]:
-        raise HTTPException(status_code=409, detail="RAG chunk creation is already running.")
+        raise HTTPException(status_code=409, detail="The RAG pipeline is already running.")
     _rag_build_status.update({
         "running": True, "error": None, "output": "", "percent": 1,
         "stage": "starting", "message": "Starting the full RAG pipeline...",

@@ -306,17 +306,17 @@ async function refreshRagBuildStatus() {
     }
     if (status.chunks_exist) {
       buildRagBtn.disabled = false;
-      buildRagBtn.textContent = 'Rebuild RAG index';
-      ragBuildStatus.textContent = `${status.chunk_count} RAG chunks are ready. Rebuilding replaces the existing index.`;
+      buildRagBtn.textContent = 'Rebuild RAG knowledge base';
+      ragBuildStatus.textContent = `${status.chunk_count} RAG chunks are ready. Rebuilding re-runs the scrapers and replaces the existing index.`;
       return;
     }
     buildRagBtn.disabled = false;
-    buildRagBtn.textContent = 'Create RAG chunks';
+    buildRagBtn.textContent = 'Build RAG knowledge base';
     ragBuildStatus.textContent = status.error
       ? `Chunk creation failed: ${status.error}`
       : status.output
         ? 'RAG chunks created and the search index is ready.'
-        : 'Create chunks from the scraped RAG data and rebuild the local search index.';
+        : 'Scrape all sources, save them in backend/data, and build the local search index.';
   } catch (error) {
     ragBuildStatus.textContent = 'RAG build status unavailable. Is the backend running?';
     buildRagBtn.disabled = true;
@@ -387,7 +387,7 @@ buildRagBtn.addEventListener('click', async () => {
   buildRagBtn.textContent = 'Starting...';
   try {
     const response = await fetch(`${BACKEND_URL}/api/rag/build`, { method: 'POST' });
-    if (!response.ok) throw new Error((await response.json()).detail || 'Could not start RAG chunk creation');
+    if (!response.ok) throw new Error((await response.json()).detail || 'Could not start the RAG pipeline');
     await refreshRagBuildStatus();
     startPolling('rag');
   } catch (error) {

@@ -103,10 +103,10 @@
 
           <div class="settings-section dataset-section">
             <div>
-              <label>RAG knowledge-base chunks</label>
-              <p id="ragBuildStatus" class="field-note">Create chunks from the scraped RAG data and rebuild the local search index.</p>
+              <label>RAG knowledge base</label>
+              <p id="ragBuildStatus" class="field-note">Scrape all sources, save them in backend/data, and build the local search index.</p>
             </div>
-            <button id="buildRagBtn" class="primary-button" type="button">Create RAG chunks</button>
+            <button id="buildRagBtn" class="primary-button" type="button">Build RAG knowledge base</button>
             <div id="ragProgress" class="task-progress" hidden>
               <div class="task-progress-header">
                 <span id="ragProgressLabel">Preparing pipeline...</span>
@@ -117,7 +117,7 @@
               </div>
               <pre id="ragProgressLog" class="task-progress-log" hidden></pre>
             </div>
-            <p class="field-note">Runs every scraper, then cleans, chunks, embeds, and replaces the RAG search index.</p>
+            <p class="field-note">Runs every scraper, saves its files in backend/data, then cleans, chunks, embeds, and replaces the RAG search index. Suitable for a fresh Docker environment.</p>
           </div>
 
           <div class="settings-section switch-row">
