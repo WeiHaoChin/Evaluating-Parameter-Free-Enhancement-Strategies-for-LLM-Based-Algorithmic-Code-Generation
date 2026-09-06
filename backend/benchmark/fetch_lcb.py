@@ -147,8 +147,6 @@ def _prepare_problem(item: dict) -> dict:
         "difficulty": item.get("difficulty"),
         "platform": item.get("platform"),
         "release_date": item.get("contest_date"),
-        "test_cases": test_cases,
-        "private_tests": private_tests,
         "starter_code": item.get("starter_code") or None,
         "evaluation_sample": {
             "input_output": json.dumps({

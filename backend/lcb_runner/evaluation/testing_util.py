@@ -219,6 +219,22 @@ def convert_line_to_decimals(line: str) -> tuple[bool, list[Decimal]]:
     return True, decimal_line
 
 
+def numerically_equal_lines(prediction_line: str, expected_line: str) -> bool:
+    """Compare whitespace-delimited numeric output without materialising lists."""
+    prediction_tokens = prediction_line.split()
+    expected_tokens = expected_line.split()
+    if len(prediction_tokens) != len(expected_tokens):
+        return False
+
+    try:
+        return all(
+            Decimal(prediction) == Decimal(expected)
+            for prediction, expected in zip(prediction_tokens, expected_tokens)
+        )
+    except Exception:
+        return False
+
+
 def get_stripped_lines(val: str):
     ## you don't want empty lines to add empty list after splitlines!
     val = val.strip()
@@ -406,16 +422,9 @@ def grade_stdio(code: str, all_inputs: list, all_outputs: list, timeout: int):
             if stripped_prediction_line == stripped_gt_out_line:
                 continue
 
-            success, decimal_prediction_line = convert_line_to_decimals(stripped_prediction_line)
-            if not success:
-                line_failed = True
-                break
-            success, decimal_gtout_line = convert_line_to_decimals(stripped_gt_out_line)
-            if not success:
-                line_failed = True
-                break
-
-            if decimal_prediction_line == decimal_gtout_line:
+            if numerically_equal_lines(
+                stripped_prediction_line, stripped_gt_out_line
+            ):
                 continue
 
             line_failed = True
