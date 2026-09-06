@@ -615,45 +615,160 @@ function displayProblemResults(results) {
   const table = document.createElement('table');
   table.className = 'problem-results-table';
 
+  const sortableResults = results.map((result, originalIndex) => ({
+    result,
+    originalIndex,
+  }));
+  const columns = [
+    {
+      key: 'problem',
+      label: 'Problem',
+      defaultDirection: 'asc',
+      getSortValue: (result) => (result.problem?.title || '').toLocaleLowerCase(),
+      title: 'Sort by problem title',
+    },
+    {
+      key: 'baseline',
+      label: 'Baseline Test Cases',
+      defaultDirection: 'desc',
+      getSortValue: (result) => getPassRate(result.modes?.baseline),
+      title: 'Sort by baseline test-case accuracy',
+    },
+    ...[
+      ['rag_only', 'RAG Only Test Cases'],
+      ['textgrad_only', 'TextGrad Only Test Cases'],
+      ['full', 'RAG + TextGrad Test Cases'],
+    ].map(([key, label]) => ({
+      key,
+      label,
+      defaultDirection: 'desc',
+      getSortValue: (result) => getPassRateDelta(result.modes, key),
+      title: `Sort by ${label.replace(' Test Cases', '')} increase from baseline`,
+    })),
+  ];
+  let sortState = null;
+
   // Create header row
   const headerRow = table.insertRow();
   headerRow.className = 'header-row';
-  headerRow.innerHTML = `
-    <th>Problem</th>
-    <th>Baseline Test Cases</th>
-    <th>RAG Only Test Cases</th>
-    <th>TextGrad Only Test Cases</th>
-    <th>RAG + TextGrad Test Cases</th>
-  `;
+  const headerCells = new Map();
+  columns.forEach((column) => {
+    const headerCell = document.createElement('th');
+    headerCell.setAttribute('aria-sort', 'none');
 
-  // Add result rows
-  for (const result of results) {
-    const problem = result.problem || {};
-    const modes = result.modes || {};
-    const modeNames = ['baseline', 'rag_only', 'textgrad_only', 'full'];
-    const baselinePassRate = getPassRate(modes.baseline);
-
-    const row = table.insertRow();
-    row.className = modeNames.every((mode) => isPassAtOne(modes[mode]))
-      ? 'row-all-passed'
-      : 'row-mixed';
-
-    const problemCell = row.insertCell();
-    problemCell.textContent = problem.title || 'Untitled problem';
-    problemCell.title = problem.title || '';
-
-    modeNames.forEach((mode) => {
-      const cell = row.insertCell();
-      const passed = isPassAtOne(modes[mode]);
-      cell.className = passed ? 'mode-cell mode-cell-passed' : 'mode-cell mode-cell-failed';
-      cell.appendChild(createModePassRateContent(
-        modes[mode],
-        mode === 'baseline' ? null : baselinePassRate
-      ));
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'problem-results-sort-button';
+    button.title = column.title;
+    button.innerHTML = `<span>${column.label}</span><span class="sort-indicator" aria-hidden="true">↕</span>`;
+    button.addEventListener('click', () => {
+      sortState = {
+        key: column.key,
+        direction: sortState?.key === column.key && sortState.direction === 'desc'
+          ? 'asc'
+          : sortState?.key === column.key && sortState.direction === 'asc'
+            ? 'desc'
+            : column.defaultDirection,
+      };
+      renderRows();
+      updateSortHeaders();
     });
-  }
+    headerCell.appendChild(button);
+    headerRow.appendChild(headerCell);
+    headerCells.set(column.key, { headerCell, button });
+  });
+
+  const renderRows = () => {
+    while (table.rows.length > 1) {
+      table.deleteRow(1);
+    }
+
+    const rows = [...sortableResults];
+    if (sortState) {
+      const column = columns.find(({ key }) => key === sortState.key);
+      rows.sort((left, right) => compareProblemResults(
+        column.getSortValue(left.result),
+        column.getSortValue(right.result),
+        sortState.direction,
+        left.originalIndex,
+        right.originalIndex
+      ));
+    }
+
+    rows.forEach(({ result }) => appendProblemResultRow(table, result));
+  };
+
+  const updateSortHeaders = () => {
+    columns.forEach(({ key }) => {
+      const { headerCell, button } = headerCells.get(key);
+      const active = sortState?.key === key;
+      const direction = active ? sortState.direction : null;
+      headerCell.setAttribute('aria-sort', direction === 'asc'
+        ? 'ascending'
+        : direction === 'desc'
+          ? 'descending'
+          : 'none');
+      button.querySelector('.sort-indicator').textContent = direction === 'asc'
+        ? '↑'
+        : direction === 'desc'
+          ? '↓'
+          : '↕';
+      button.classList.toggle('active', active);
+    });
+  };
+
+  renderRows();
 
   problemResultsContainer.appendChild(table);
+}
+
+function getPassRateDelta(modes, mode) {
+  const baselinePassRate = getPassRate(modes?.baseline);
+  const modePassRate = getPassRate(modes?.[mode]);
+  return baselinePassRate === null || modePassRate === null
+    ? null
+    : modePassRate - baselinePassRate;
+}
+
+function compareProblemResults(left, right, direction, leftIndex, rightIndex) {
+  const leftMissing = left === null || left === undefined;
+  const rightMissing = right === null || right === undefined;
+  if (leftMissing || rightMissing) {
+    if (leftMissing && rightMissing) return leftIndex - rightIndex;
+    return leftMissing ? 1 : -1;
+  }
+
+  const comparison = typeof left === 'string'
+    ? left.localeCompare(right)
+    : left - right;
+  if (comparison === 0) return leftIndex - rightIndex;
+  return direction === 'asc' ? comparison : -comparison;
+}
+
+function appendProblemResultRow(table, result) {
+  const problem = result.problem || {};
+  const modes = result.modes || {};
+  const modeNames = ['baseline', 'rag_only', 'textgrad_only', 'full'];
+  const baselinePassRate = getPassRate(modes.baseline);
+
+  const row = table.insertRow();
+  row.className = modeNames.every((mode) => isPassAtOne(modes[mode]))
+    ? 'row-all-passed'
+    : 'row-mixed';
+
+  const problemCell = row.insertCell();
+  problemCell.textContent = problem.title || 'Untitled problem';
+  problemCell.title = problem.title || '';
+
+  modeNames.forEach((mode) => {
+    const cell = row.insertCell();
+    const passed = isPassAtOne(modes[mode]);
+    cell.className = passed ? 'mode-cell mode-cell-passed' : 'mode-cell mode-cell-failed';
+    cell.appendChild(createModePassRateContent(
+      modes[mode],
+      mode === 'baseline' ? null : baselinePassRate
+    ));
+  });
 }
 
 function isPassAtOne(modeResult) {
@@ -717,7 +832,7 @@ function createModePassRateContent(modeResult, baselinePassRate) {
         : 'baseline-delta baseline-delta-unchanged';
     const indicator = deltaPoints > 0 ? '↑' : deltaPoints < 0 ? '↓' : '→';
     const sign = deltaPoints > 0 ? '+' : '';
-    comparison.textContent = `${indicator} ${sign}${deltaPoints.toFixed(1)} pp vs baseline`;
+    comparison.textContent = `${indicator} ${sign}${deltaPoints.toFixed(1)}% vs baseline`;
     container.appendChild(comparison);
   }
   return container;

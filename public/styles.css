@@ -1624,6 +1624,39 @@ input[type="range"] {
   white-space: nowrap;
 }
 
+.problem-results-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.problem-results-sort-button:hover,
+.problem-results-sort-button:focus-visible,
+.problem-results-sort-button.active {
+  color: #67e8f9;
+}
+
+.problem-results-sort-button:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 4px;
+}
+
+.problem-results-sort-button .sort-indicator {
+  min-width: 1em;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
 .mode-pass-rate {
   font-weight: 600;
 }
