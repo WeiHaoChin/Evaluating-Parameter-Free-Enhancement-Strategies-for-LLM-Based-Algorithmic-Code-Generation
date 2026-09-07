@@ -22,6 +22,7 @@ MODES = [
 
 benchmark_status = {
     "running": False,
+    "started_at": None,
     "progress": 0,
     "total": 0,
     "current_problem": "",
@@ -91,7 +92,9 @@ async def run_benchmark(
     print(f"Running benchmark with settings: {settings.dict()} in runner")
     reset_stop_flag()
     benchmark_status["running"] = True
+    benchmark_status["started_at"] = time.time()
     benchmark_status["progress"] = 0
+    benchmark_status["total"] = 0
     benchmark_status["current_problem"] = "Loading dataset..."
     benchmark_status["modes"] = _fresh_mode_statuses()
 
@@ -220,6 +223,7 @@ async def run_benchmark(
                     "system_prompt_used": None,
                     "rag_retrieved_data": [],
                     "textgrad_improved_system_prompt": None,
+                    "textgrad_iterations": [],
                     "latency_ms": (time.perf_counter() - start_time) * 1000,
                     "textgrad_included": mode["textgrad"],
                     "exception": str(e),
@@ -260,6 +264,7 @@ async def run_benchmark(
                     ),
                     "rag_retrieved_data": refined.get("rag_retrieved_data", []),
                     "textgrad_improved_system_prompt": None,
+                    "textgrad_iterations": [],
                     "textgrad_included": False,
                 }
 
@@ -295,6 +300,7 @@ async def run_benchmark(
                 "rag_context_included": bool(refined.get("rag_context_included")),
                 "rag_retrieved_data": refined.get("rag_retrieved_data", []),
                 "textgrad_improved_system_prompt": None,
+                "textgrad_iterations": [],
                 "textgrad_included": False,
                 "latency_ms": latency_ms,
                 "timings": {

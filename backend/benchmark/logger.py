@@ -224,6 +224,7 @@ def _normalise_loaded_results(data: Any) -> dict:
                 )
                 mode_result.setdefault("rag_retrieved_data", [])
                 mode_result.setdefault("textgrad_improved_system_prompt", None)
+                mode_result.setdefault("textgrad_iterations", [])
 
     # Legacy files may contain huge private test inputs which are irrelevant
     # to result display and metric calculations.

@@ -123,6 +123,7 @@ def run_textgrad(
     answer_text = ''
     initial_answer_text = ''
     for loop_idx in range(loops):
+        prompt_before = system_prompt_var.value
         if progress_callback:
             progress_callback("generating", f"Generating answer (iteration {loop_idx + 1}/{loops})")
         # Send iteration start event with original prompt
@@ -192,6 +193,7 @@ def run_textgrad(
         yield {
             'type': 'prompt_updated',
             'original': prompt_text if loop_idx == 0 else None,
+            'before': prompt_before,
             'updated': system_prompt_var.value,
             'loop': loop_idx + 1
         }
@@ -228,22 +230,37 @@ def run_textgrad_sync(
     max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
     internal_max_output_tokens=DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
     generation_records=None,
+    iteration_records=None,
     mode="textgrad_only",
 ):
     """Collect TextGrad events and optionally return the optimized prompt."""
     answer_text = ''
     initial_answer_text = ''
     improved_system_prompt = system_prompt
+    critic_feedback_by_loop = {}
+    collected_iterations = []
     for event in run_textgrad(
         prompt_text, system_prompt, textGradModel, model, loss_prompt, loops,
         api_key, textGrad_api_key, temperature, progress_callback,
         max_output_tokens, internal_max_output_tokens, generation_records, mode,
     ):
+        if event['type'] == 'critic_feedback':
+            critic_feedback_by_loop[event['loop']] = event['data']
         if event['type'] == 'prompt_updated':
             improved_system_prompt = event['updated']
+            collected_iterations.append({
+                'loop': event['loop'],
+                'critic_feedback': critic_feedback_by_loop.get(
+                    event['loop'], ''
+                ),
+                'prompt_before': event.get('before'),
+                'prompt_after': event['updated'],
+            })
         if event['type'] == 'complete':
             answer_text = event['answer']
             initial_answer_text = event['initial_answer']
+    if iteration_records is not None:
+        iteration_records.extend(collected_iterations)
     if return_details:
         return answer_text, improved_system_prompt, initial_answer_text
     return answer_text

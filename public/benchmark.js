@@ -46,7 +46,7 @@ let readiness = null;
 document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   linkSliderAndInput();
-  checkBackendStatus();
+  await checkBackendStatus();
   await fetchDefaultSettings();
   await refreshBenchmarkReadiness();
 });
@@ -165,10 +165,15 @@ function loadSavedSettings() {
 async function checkBackendStatus() {
   backendStatus.classList.remove('connected', 'error');
   try {
-    const response = await fetch(`${BACKEND_URL}/benchmark/status`);
+    const response = await fetch(`${BACKEND_URL}/benchmark/status`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10000),
+    });
     if (response.ok) {
       backendStatus.textContent = 'Backend: connected';
       backendStatus.classList.add('connected');
+      const status = await response.json();
+      restoreRunningBenchmark(status);
     } else {
       backendStatus.textContent = 'Backend: error';
       backendStatus.classList.add('error');
@@ -177,6 +182,23 @@ async function checkBackendStatus() {
     backendStatus.textContent = 'Backend: offline';
     backendStatus.classList.add('error');
   }
+}
+
+function restoreRunningBenchmark(status) {
+  if (!status?.running) return;
+
+  benchmarkRunning = true;
+  const startedAt = Number(status.started_at);
+  benchmarkStartTime = Number.isFinite(startedAt) && startedAt > 0
+    ? startedAt * 1000
+    : Date.now();
+  configPanel.style.display = 'none';
+  statusPanel.style.display = 'block';
+  resultsPanel.style.display = 'none';
+  stopBenchmarkBtn.disabled = false;
+  stopBenchmarkBtn.textContent = 'Stop Benchmark';
+  updateProgressUI(status);
+  pollBenchmarkStatus();
 }
 
 async function startBenchmark() {
@@ -286,6 +308,7 @@ async function stopBenchmark() {
 }
 
 function pollBenchmarkStatus() {
+  if (statusCheckInterval) clearInterval(statusCheckInterval);
   statusCheckInterval = setInterval(async () => {
     try {
       const response = await fetch(`${BACKEND_URL}/benchmark/status`);
@@ -296,6 +319,7 @@ function pollBenchmarkStatus() {
 
       if (!status.running) {
         clearInterval(statusCheckInterval);
+        statusCheckInterval = null;
         benchmarkRunning = false;
         stopBenchmarkBtn.disabled = false;
         stopBenchmarkBtn.textContent = 'Stop Benchmark';

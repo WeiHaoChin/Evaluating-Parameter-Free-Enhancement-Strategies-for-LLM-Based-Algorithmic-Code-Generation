@@ -14,6 +14,7 @@ from solver import evaluate_response, summarize_test_outcomes
 from TextGrad import (
     IMMUTABLE_GENERATION_CONTRACT,
     compose_constrained_system_prompt,
+    run_textgrad_sync,
 )
 from textgrad import Variable
 from benchmark.runner import get_status, run_benchmark
@@ -44,6 +45,42 @@ class TextGradPromptConstraintTests(unittest.TestCase):
         self.assertEqual(len(combined.predecessors), 2)
         trainable = [item for item in combined.predecessors if item.requires_grad]
         self.assertEqual(trainable, [advisory])
+
+    def test_sync_run_collects_structured_iteration_records(self):
+        events = iter([
+            {
+                "type": "critic_feedback", "loop": 1,
+                "data": "RISK: incorrect boundary",
+            },
+            {
+                "type": "prompt_updated", "loop": 1,
+                "before": "original system prompt",
+                "updated": "improved system prompt",
+            },
+            {
+                "type": "complete", "answer": "final answer",
+                "initial_answer": "initial answer",
+            },
+        ])
+        iterations = []
+
+        with patch("TextGrad.run_textgrad", return_value=events):
+            result = run_textgrad_sync(
+                prompt_text="problem", system_prompt="system",
+                textGradModel="critic", model="main", loss_prompt="loss",
+                return_details=True, iteration_records=iterations,
+            )
+
+        self.assertEqual(
+            result,
+            ("final answer", "improved system prompt", "initial answer"),
+        )
+        self.assertEqual(iterations, [{
+            "loop": 1,
+            "critic_feedback": "RISK: incorrect boundary",
+            "prompt_before": "original system prompt",
+            "prompt_after": "improved system prompt",
+        }])
 
 
 class GenerationMetadataTests(unittest.TestCase):

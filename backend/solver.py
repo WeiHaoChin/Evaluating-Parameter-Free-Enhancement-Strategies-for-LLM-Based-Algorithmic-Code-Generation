@@ -377,6 +377,7 @@ def run_pipeline(
     # ── Step 2: Generate solution ──────────────────────────────────────────────
     response = ""
     improved_system_prompt = None
+    textgrad_iterations = []
     generation_started = time.perf_counter()
 
     if textgrad:
@@ -397,6 +398,7 @@ def run_pipeline(
                 max_output_tokens=max_output_tokens,
                 internal_max_output_tokens=textgrad_internal_max_output_tokens,
                 generation_records=generation_records,
+                iteration_records=textgrad_iterations,
                 mode=experiment_mode,
             )
         except Exception as e:
@@ -489,6 +491,7 @@ def run_pipeline(
         "rag_context_included": bool(rag_context),
         "rag_retrieved_data":  rag_results,
         "textgrad_improved_system_prompt": improved_system_prompt,
+        "textgrad_iterations": textgrad_iterations,
         "textgrad_initial_response": initial_response if textgrad else None,
         "latency_ms":           latency_ms,
         "timings": {
