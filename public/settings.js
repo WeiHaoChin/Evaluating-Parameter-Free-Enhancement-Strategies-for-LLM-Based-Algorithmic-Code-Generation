@@ -486,7 +486,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   refreshOllamaStatus();
   refreshDatasetStatus();
   refreshRagBuildStatus();
-  // ... rest of your existing DOMContentLoaded code
 });
 
 if (backToChat) {

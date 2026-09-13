@@ -16,9 +16,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy and install LiveCodeBench in editable mode
-# COPY LiveCodeBench ./LiveCodeBench
-# RUN pip install --user -e ./LiveCodeBench --no-deps
 
 # ==========================================
 # STAGE 2: Clean Runtime Environment (With Data)

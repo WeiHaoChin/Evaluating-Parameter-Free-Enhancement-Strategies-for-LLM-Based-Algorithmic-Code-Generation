@@ -199,6 +199,67 @@ def format_rag_context(
     return "\n".join(lines)
 
 
+def format_solution_rag_context(
+    knowledge_results: List[Dict[str, Any]],
+    problem_results: List[Dict[str, Any]],
+    include_metadata: bool = True,
+) -> str:
+    """Format solution references separately from an analogous problem."""
+    if not knowledge_results and not problem_results:
+        return ""
+
+    sections = []
+    if knowledge_results:
+        sections.extend([
+            "## Retrieved solution references",
+            "",
+            "The following contains potentially relevant editorials and algorithm theory.",
+            "",
+            format_rag_context(knowledge_results, include_metadata=include_metadata),
+        ])
+
+    if problem_results:
+        if sections:
+            sections.append("")
+        sections.extend([
+            "## Analogous problem",
+            "",
+            "This is a different problem. Use it only to recognize transferable patterns. "
+            "Do not copy its input/output requirements.",
+            "",
+            format_rag_context(problem_results, include_metadata=include_metadata),
+        ])
+
+    return "\n".join(sections)
+
+
+def query_solution_rag(
+    query_text: str,
+    min_similarity: float = DEFAULT_MIN_SIMILARITY,
+    include_metadata: bool = True,
+) -> tuple[List[Dict[str, Any]], str]:
+    """Retrieve four solution references and at most one analogous problem."""
+    knowledge_results = query_rag(
+        query_text,
+        n_results=4,
+        filters={"chunk_type": {"$in": ["editorial", "theory"]}},
+        min_similarity=min_similarity,
+    )
+    problem_results = query_rag(
+        query_text,
+        n_results=1,
+        filters={"chunk_type": {"$eq": "problem_statement"}},
+        min_similarity=min_similarity,
+    )
+    results = knowledge_results + problem_results
+    context = format_solution_rag_context(
+        knowledge_results,
+        problem_results,
+        include_metadata=include_metadata,
+    )
+    return results, context
+
+
 def get_rag_augmented_response(
     query_text: str,
     system_prompt: str,

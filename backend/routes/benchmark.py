@@ -152,7 +152,6 @@ async def start_benchmark(
             status_code=422,
             detail=f"Benchmark setup is incomplete: {', '.join(missing)}.",
         )
-    # print(f"Starting benchmark with version={request.version}, n={request.n}, difficulty={request.difficulty}, settings={request.settings.dict()}")
     async def run_and_save() -> None:
         settings = request.settings or Settings()
         filename = new_results_path()

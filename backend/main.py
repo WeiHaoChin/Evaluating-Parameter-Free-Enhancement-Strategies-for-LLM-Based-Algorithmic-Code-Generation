@@ -13,11 +13,10 @@ from fastapi.staticfiles import StaticFiles
 from solver import call_llm, build_rag_prompt
 from TextGrad import run_textgrad, run_textgrad_sync
 from rag_handler import (
-    format_rag_context,
     get_rag_chunk_count,
     initialize_rag,
     is_rag_available,
-    query_rag,
+    query_solution_rag,
 )
 from routes.benchmark import router as benchmark_router
 from schemas import Settings, ChatRequest, settings_defaults, validate_api_key_settings
@@ -30,6 +29,10 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
+
+
+# Apply even when an existing Docker image starts Uvicorn with access logs enabled.
+logging.getLogger("uvicorn.access").disabled = True
 
 RAG_DATA_ROOT = Path(__file__).parent / "data"
 _rag_build_status = {
@@ -101,8 +104,7 @@ def _build_rag_prompt_for_chat(message: str, settings: Settings) -> tuple[str, s
 
     try:
         logger.info(f"Querying RAG for: '{message}'")
-        rag_results = query_rag(message, n_results=5)
-        rag_context = format_rag_context(rag_results, include_metadata=True)
+        _, rag_context = query_solution_rag(message)
         if rag_context:
             logger.info(f"✓ RAG context added ({len(rag_context)} chars)")
             return build_rag_prompt(message, rag_context), rag_context

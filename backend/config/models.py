@@ -3,11 +3,11 @@
 MODEL_CONFIG = {
     "gemini-2.5-pro": {"provider": "google"},
     "claude-sonnet-4-6": {"provider": "anthropic"},
-    "deepseek-v4-flash": {"provider": "deepseek"},
+    "deepseek-v4-flash": {"provider": "ollama_cloud"},
     "gemma4:cloud": {"provider": "ollama_cloud"},
     "gpt-oss:120b": {"provider": "ollama_cloud"},
     "qwen3.5:cloud": {"provider": "ollama_cloud"},
-    "mistral-large-3:cloud": {"provider": "ollama_cloud"},
+    "mistral-large-3:675b-cloud": {"provider": "ollama_cloud"},
     "kimi-k2.6:cloud": {"provider": "ollama_cloud"},
 }
 

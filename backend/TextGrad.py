@@ -118,7 +118,19 @@ def run_textgrad(
         internal_max_output_tokens=internal_max_output_tokens,
         generation_records=generation_records, mode=mode,
     )
-    optimizer = TGD(parameters=[advisory_prompt_var], engine=feedback_llm)
+    optimizer = TGD(
+        parameters=[advisory_prompt_var],
+        engine=feedback_llm,
+        constraints=[
+            OPTIMIZATION_BOUNDARY,
+            (
+                "The following fixed contract applies to generated solutions. "
+                "It is appended separately to the advisory prompt. "
+                "Do not copy it into the edited prompt or contradict it:\n\n"
+                + IMMUTABLE_GENERATION_CONTRACT
+            ),
+        ],
+    )
 
     answer_text = ''
     initial_answer_text = ''
@@ -155,7 +167,10 @@ def run_textgrad(
             progress_callback("getting_feedback", f"Getting feedback (iteration {loop_idx + 1}/{loops})")
         feedback_llm.set_generation_context("critique_evaluation")
         evaluation_instruction = Variable(
-            f"{loss_prompt}\n\n{OPTIMIZATION_BOUNDARY}",
+            f"{loss_prompt}\n\n{OPTIMIZATION_BOUNDARY}\n\n"
+            "Evaluate the generated solution against this fixed output contract. "
+            "These rules apply to the solution, not to your feedback:\n\n"
+            f"{IMMUTABLE_GENERATION_CONTRACT}",
             requires_grad=False,
             role_description="competitive programming evaluation instruction",
         )
@@ -206,8 +221,6 @@ def run_textgrad(
             'type': 'iteration_complete',
             'loop': loop_idx + 1
         }
-    # print(f"Updated System Prompt: {system_prompt_var.value}\n")
-    # print(f"Textgrad model parameters: {textgrad_model.parameters()}\n")
     if progress_callback:
         progress_callback("generating", "Generating final improved answer")
     main_llm.set_generation_context("final_generation")

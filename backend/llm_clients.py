@@ -8,6 +8,7 @@ from ollama import Client
 from google import genai
 from config.models import get_model_provider, register_local_ollama_models
 from config.generation import DEFAULT_MAX_OUTPUT_TOKENS
+from request_audit import capture_ollama_request
 
 logger = logging.getLogger(__name__)
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
@@ -119,9 +120,12 @@ class OllamaLLM(GenerationTrackedLLM):
     def __init__(self, model, host=None, api_key=None, temperature=0.0, max_output_tokens=MAX_OUTPUT_TOKENS, metadata_sink=None, mode=None, call_type="generation"):
         self.model = model
         self.host = (host or OLLAMA_HOST).rstrip('/')
-        self.client = Client(host=self.host)
+        self.client = Client(host=self.host, event_hooks={"request": [self._audit_request]})
         self.temperature = temperature
         self._init_tracking(max_output_tokens, metadata_sink, mode, call_type)
+
+    def _audit_request(self, request):
+        capture_ollama_request(request, mode=self.mode, call_type=self.call_type)
 
     def __call__(self, prompt, system_prompt=None, **kwargs):
         messages = []
@@ -130,14 +134,18 @@ class OllamaLLM(GenerationTrackedLLM):
         messages.append({'role': 'user', 'content': str(prompt)})
 
         call_started_ns = time.perf_counter_ns()
-        response = self.client.chat(
-            model=self.model,
-            messages=messages,
-            options={
+        chat_kwargs = {
+            'model': self.model,
+            'messages': messages,
+            'options': {
                 'temperature': self.temperature,
                 'num_predict': self.max_output_tokens,
             },
-        )
+        }
+        if self.model.startswith(('qwen3.5','deepseek-v4','kimi-k2.6')):
+            chat_kwargs['think'] = False
+
+        response = self.client.chat(**chat_kwargs)
         message = getattr(response, 'message', None)
         content = getattr(message, 'content', None)
         self._record(
@@ -166,6 +174,7 @@ class OllamaCloudLLM(OllamaLLM):
         self.client = Client(
             host=self.host,
             headers={"Authorization": f"Bearer {api_key}"},
+            event_hooks={"request": [self._audit_request]},
         )
         self.temperature = temperature
         self._init_tracking(max_output_tokens, metadata_sink, mode, call_type)
@@ -180,9 +189,6 @@ class GoogleGenerativeAI(GenerationTrackedLLM):
         self._init_tracking(max_output_tokens, metadata_sink, mode, call_type)
 
     def __call__(self, prompt, system_prompt=None, **kwargs):
-        # For Google models, system_prompt is usually part of the prompt in a multi-turn conversation
-        # or set as a safety setting. Here, we'll prepend it to the prompt if provided.
-        # full_prompt = f"{system_prompt}\n{prompt}" if system_prompt else str(prompt)
         config = genai.types.GenerateContentConfig(
             temperature=self.temperature,
             max_output_tokens=self.max_output_tokens,
