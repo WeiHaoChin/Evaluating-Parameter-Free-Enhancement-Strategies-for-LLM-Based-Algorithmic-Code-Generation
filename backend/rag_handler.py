@@ -243,7 +243,7 @@ def query_solution_rag(
         query_text,
         n_results=4,
         filters={"chunk_type": {"$in": ["editorial", "theory"]}},
-        min_similarity=min_similarity,
+        min_similarity=.72,
     )
     problem_results = query_rag(
         query_text,

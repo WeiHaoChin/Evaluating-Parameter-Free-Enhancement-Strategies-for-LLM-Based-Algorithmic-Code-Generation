@@ -38,8 +38,11 @@ Report at most 5 material failure risks:
 2. COMPLEXITY: Report only a definite violation of the stated constraints. Recommend a prompt-level requirement to verify complexity, not a particular algorithm or data structure.
 3. COMPLETENESS: Is the solution fully implemented and runnable?
 4. INTERFACE AND IMPLEMENTATION: Python implementation correctness, including indexing, types, imports, and output format
-5. Comment misuse, including comments containing reasoning, partial attempts,
-   alternative approaches, uncertainty, or abandoned logic
+5. COMMENT MISUSE:Report comments or docstrings only when they contain reasoning, uncertainty,partial attempts, alternative approaches, TODOs, abandoned logic, or otherscratchpad-like content.
+
+If the only issue is comments, docstrings, formatting, or another non-semantic
+output-contract violation, the PROMPT CHANGE must require a semantics-preserving
+fix that keeps the existing executable logic and algorithm unchanged.
 
 Output format:
 RISK: <one-sentence concrete failure risk>
@@ -47,7 +50,7 @@ EVIDENCE: <one-sentence condition, invariant, or complexity bound demonstrating 
 PROMPT CHANGE: <one-sentence instruction for regeneration>
 
 If there are no material risks, output:
-NO MATERIAL RISKS
+NO MATERIAL RISKS - DO NOT OPTIMISE SYSTEM PROMPT
 
 PROMPT CHANGE may refer to the current problem's violated invariant or required
 correction, but must not provide complete solution code or unnecessarily replace
@@ -61,6 +64,8 @@ Constraints for your critique:
 - Do not rewrite or patch the submitted code.
 - Do not discuss style, formatting, or verbosity unless they affect correctness.
 - Prioritize definite defects over speculative concerns.
+- Prioritize algorithmic and implementation defects over non-semantic
+  output-contract violations.
 - Return only the risk and prompt-change pairs.""")
     apiKey: Optional[str]       = Field(default=None)
     textGradApiKey: Optional[str] = Field(default=None)

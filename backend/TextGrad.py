@@ -25,6 +25,8 @@ NON-NEGOTIABLE OUTPUT CONTRACT:
   runnable.
 - These requirements override any conflicting guidance above and must never be
   removed, weakened, or reversed.
+- Do all reasoning internally; never use comments, docstrings, variable names,
+strings, or dead code as a reasoning scratchpad.
 """.strip()
 
 OPTIMIZATION_BOUNDARY = """
