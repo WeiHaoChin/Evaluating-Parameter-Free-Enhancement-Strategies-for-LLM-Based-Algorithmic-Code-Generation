@@ -32,7 +32,7 @@ class RequestAuditTests(unittest.TestCase):
             ):
                 llm = OllamaCloudLLM(
                     "kimi-k2.6:cloud", api_key="secret-test-key",
-                    mode="full", max_output_tokens=8192,
+                    mode="full", max_output_tokens=8192, thinking_mode="off",
                 )
                 self.assertEqual(llm("problem", system_prompt="Only Python."), "answer")
             raw = path.read_text(encoding="utf-8")

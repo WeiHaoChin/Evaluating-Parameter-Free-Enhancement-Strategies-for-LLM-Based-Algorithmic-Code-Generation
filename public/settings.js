@@ -1,5 +1,8 @@
 const modelSelect = document.getElementById('modelSelect');
 const customModel = document.getElementById('customModel');
+const thinkingModeSection = document.getElementById('thinkingModeSection');
+const thinkingModeInput = document.getElementById('thinkingMode');
+const thinkingModeNote = document.getElementById('thinkingModeNote');
 const temperatureInput = document.getElementById('temperature');
 const temperatureValue = document.getElementById('temperatureValue');
 const maxOutputTokensInput = document.getElementById('maxOutputTokens');
@@ -12,6 +15,9 @@ const textGradModelSelect = document.getElementById('textGradModelSelect');
 const customTextGradModel = document.getElementById('customTextGradModel');
 const textGradApiKeySection = document.getElementById('textGradApiKeySection');
 const textGradApiKeyInput = document.getElementById('textGradApiKey');
+const textGradThinkingModeSection = document.getElementById('textGradThinkingModeSection');
+const textGradThinkingModeInput = document.getElementById('textGradThinkingMode');
+const textGradThinkingModeNote = document.getElementById('textGradThinkingModeNote');
 const textGradLoopsSection = document.getElementById('textGradLoopsSection');
 const textGradLoopsInput = document.getElementById('textGradLoops');
 const textGradInternalMaxOutputTokensSection = document.getElementById('textGradInternalMaxOutputTokensSection');
@@ -19,6 +25,9 @@ const textGradInternalMaxOutputTokensInput = document.getElementById('textGradIn
 const systemPrompt = document.getElementById('systemPrompt');
 const textGradLossPromptSection = document.getElementById('textGradLossPromptSection');
 const textGradLossPrompt = document.getElementById('textGradLossPrompt');
+const textGradConstraintsSection = document.getElementById('textGradConstraintsSection');
+const immutableGenerationContract = document.getElementById('immutableGenerationContract');
+const optimizationBoundary = document.getElementById('optimizationBoundary');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const downloadSettingsBtn = document.getElementById('downloadSettingsBtn');
 const loadSettingsBtn = document.getElementById('loadSettingsBtn');
@@ -49,6 +58,31 @@ let ragBuildStatusInterval = null;
 let defaultSettings = {};
 let models = [];
 let modelProviders = {};
+let modelThinking = {};
+
+const THINKING_LABELS = {
+  default: 'Model default', off: 'Off', on: 'On',
+  low: 'Low effort', medium: 'Medium effort', high: 'High effort', max: 'Maximum',
+};
+
+function updateThinkingControl(model, select, section, note, selected = 'default', enabled = true) {
+  const config = modelThinking[model] || { configurable: false, modes: ['default'], note: '' };
+  const provider = modelProviders[model];
+  const isOllamaModel = !provider || provider === 'ollama_local' || provider === 'ollama_cloud';
+  select.replaceChildren();
+  for (const mode of config.modes || ['default']) {
+    const option = document.createElement('option');
+    option.value = mode;
+    option.textContent = THINKING_LABELS[mode] || mode;
+    select.appendChild(option);
+  }
+  select.value = (config.modes || []).includes(selected) ? selected : (config.default || 'default');
+  select.disabled = !config.configurable;
+  section.hidden = !enabled || (!config.configurable && !isOllamaModel);
+  note.textContent = config.configurable
+    ? (config.note || 'Thinking choices reported by Ollama.')
+    : 'Ollama did not publish selectable thinking modes for this model. Requests will use the model default.';
+}
 
 function setProgress(container, fill, percentNode, labelNode, percent, label) {
   const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
@@ -125,6 +159,9 @@ async function fetchDefaultSettings() {
   const {
     models: schemaModels,
     modelProviders: schemaModelProviders = {},
+    modelThinking: schemaModelThinking = {},
+    immutableGenerationContract: immutableContract = '',
+    optimizationBoundary: boundary = '',
     ...schemaDefaults
   } = await response.json();
   if (!Array.isArray(schemaModels) || schemaModels.length === 0) {
@@ -132,6 +169,9 @@ async function fetchDefaultSettings() {
   }
   models = schemaModels;
   modelProviders = schemaModelProviders;
+  modelThinking = schemaModelThinking;
+  immutableGenerationContract.value = immutableContract;
+  optimizationBoundary.value = boundary;
   defaultSettings = {
     ...schemaDefaults,
     modelProviders,
@@ -144,11 +184,13 @@ async function fetchDefaultSettings() {
 function getSettingsFromForm() {
   return {
     model: selectedModel(modelSelect, customModel),
+    thinkingMode: thinkingModeInput.value || 'default',
     temperature: parseFloat(temperatureInput.value),
     maxOutputTokens: parseInt(maxOutputTokensInput.value, 10),
     includeRag: includeRag.checked,
     includeTextGrad: includeTextGrad.checked,
     textGradModel: selectedModel(textGradModelSelect, customTextGradModel),
+    textGradThinkingMode: textGradThinkingModeInput.value || 'default',
     textGradLoops: Math.min(5, Math.max(1, parseInt(textGradLoopsInput.value, 10) || 1)),
     textGradInternalMaxOutputTokens: parseInt(textGradInternalMaxOutputTokensInput.value, 10),
     textGradLossPrompt: textGradLossPrompt.value.trim() || 'Evaluate this answer. It should be factual, clear, and directly answer the question.',
@@ -168,6 +210,10 @@ function updateSliderValue() {
 
 function populateForm(settings) {
   setModelSelection(modelSelect, customModel, settings.model || defaultSettings.model || models[0]);
+  updateThinkingControl(
+    selectedModel(modelSelect, customModel), thinkingModeInput,
+    thinkingModeSection, thinkingModeNote, settings.thinkingMode,
+  );
   temperatureInput.value = settings.temperature ?? 0;
   maxOutputTokensInput.value = settings.maxOutputTokens ?? defaultSettings.maxOutputTokens;
   updateSliderValue();
@@ -178,6 +224,11 @@ function populateForm(settings) {
     textGradModelSelect,
     customTextGradModel,
     settings.textGradModel || defaultSettings.textGradModel || models[0],
+  );
+  updateThinkingControl(
+    selectedModel(textGradModelSelect, customTextGradModel), textGradThinkingModeInput,
+    textGradThinkingModeSection, textGradThinkingModeNote,
+    settings.textGradThinkingMode, settings.includeTextGrad,
   );
   textGradApiKeyInput.value = settings.textGradApiKey || '';
   textGradLoopsInput.value = Math.min(5, Math.max(1, settings.textGradLoops || 1));
@@ -226,13 +277,23 @@ async function refreshOllamaStatus() {
       if (!models.includes(model)) models.push(model);
       modelProviders[model] = 'ollama_local';
     }
+    modelThinking = { ...modelThinking, ...(status.modelThinking || {}) };
     defaultSettings.modelProviders = modelProviders;
     populateSelect('modelSelect');
     populateSelect('textGradModelSelect');
     setModelSelection(modelSelect, customModel, primarySelection || defaultSettings.model);
     setModelSelection(textGradModelSelect, customTextGradModel, textGradSelection || defaultSettings.textGradModel);
     updateApiKeyVisibility(selectedModel(modelSelect, customModel));
+    updateThinkingControl(
+      selectedModel(modelSelect, customModel), thinkingModeInput,
+      thinkingModeSection, thinkingModeNote, thinkingModeInput.value,
+    );
     updateTextGradApiKeyVisibility(selectedModel(textGradModelSelect, customTextGradModel), includeTextGrad.checked);
+    updateThinkingControl(
+      selectedModel(textGradModelSelect, customTextGradModel), textGradThinkingModeInput,
+      textGradThinkingModeSection, textGradThinkingModeNote,
+      textGradThinkingModeInput.value, includeTextGrad.checked,
+    );
 
     const count = (status.models || []).length;
     ollamaStatus.textContent = count
@@ -273,6 +334,12 @@ function updateTextGradVisibility(enabled) {
   textGradLoopsSection.style.display = enabled ? 'block' : 'none';
   textGradInternalMaxOutputTokensSection.style.display = enabled ? 'block' : 'none';
   textGradLossPromptSection.style.display = enabled ? 'block' : 'none';
+  textGradConstraintsSection.hidden = !enabled;
+  updateThinkingControl(
+    selectedModel(textGradModelSelect, customTextGradModel), textGradThinkingModeInput,
+    textGradThinkingModeSection, textGradThinkingModeNote,
+    textGradThinkingModeInput.value, enabled,
+  );
   textGradLoopsInput.required = enabled;
   textGradInternalMaxOutputTokensInput.required = enabled;
 }
@@ -400,14 +467,23 @@ temperatureInput.addEventListener('input', updateSliderValue);
 modelSelect.addEventListener('change', () => {
   customModel.hidden = modelSelect.value !== CUSTOM_CLOUD_MODEL;
   updateApiKeyVisibility(selectedModel(modelSelect, customModel));
+  updateThinkingControl(selectedModel(modelSelect, customModel), thinkingModeInput, thinkingModeSection, thinkingModeNote);
 });
-customModel.addEventListener('input', () => updateApiKeyVisibility(selectedModel(modelSelect, customModel)));
+customModel.addEventListener('input', () => {
+  updateApiKeyVisibility(selectedModel(modelSelect, customModel));
+  updateThinkingControl(selectedModel(modelSelect, customModel), thinkingModeInput, thinkingModeSection, thinkingModeNote);
+});
 textGradModelSelect.addEventListener('change', () => {
   customTextGradModel.hidden = textGradModelSelect.value !== CUSTOM_CLOUD_MODEL;
   updateTextGradApiKeyVisibility(selectedModel(textGradModelSelect, customTextGradModel), includeTextGrad.checked);
+  updateThinkingControl(selectedModel(textGradModelSelect, customTextGradModel), textGradThinkingModeInput, textGradThinkingModeSection, textGradThinkingModeNote, 'default', includeTextGrad.checked);
 });
 customTextGradModel.addEventListener('input', () => updateTextGradApiKeyVisibility(
   selectedModel(textGradModelSelect, customTextGradModel), includeTextGrad.checked,
+));
+customTextGradModel.addEventListener('input', () => updateThinkingControl(
+  selectedModel(textGradModelSelect, customTextGradModel), textGradThinkingModeInput,
+  textGradThinkingModeSection, textGradThinkingModeNote, 'default', includeTextGrad.checked,
 ));
 includeTextGrad.addEventListener('change', () => {
   updateTextGradVisibility(includeTextGrad.checked);
@@ -430,7 +506,7 @@ downloadSettingsBtn.addEventListener('click', () => {
     );
     const exportFile = {
       format: 'fyp-chat-settings',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       settings: validatedSettings,
     };
@@ -458,7 +534,7 @@ settingsFileInput.addEventListener('change', async () => {
 
   try {
     const parsed = JSON.parse(await file.text());
-    if (parsed?.format === 'fyp-chat-settings' && parsed.version !== 1) {
+    if (parsed?.format === 'fyp-chat-settings' && ![1, 2].includes(parsed.version)) {
       throw new Error(`Unsupported settings file version: ${parsed.version}.`);
     }
     const importedSettings = validateImportedSettings(

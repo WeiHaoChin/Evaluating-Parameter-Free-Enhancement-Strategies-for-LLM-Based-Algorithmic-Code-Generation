@@ -32,6 +32,7 @@ const historyModal = document.getElementById('historyModal');
 const closeHistoryBtn = document.getElementById('closeHistoryBtn');
 const historyList = document.getElementById('historyList');
 const problemResultsContainer = document.getElementById('problemResultsContainer');
+const benchmarkRunSummary = document.getElementById('benchmarkRunSummary');
 
 let benchmarkRunning = false;
 let benchmarkStartTime = null;
@@ -379,6 +380,8 @@ async function loadResults() {
 function displayResults(data) {
   const summary = data.summary;
 
+  displayRunSummary(data);
+
   // Overall Metrics
   overallMetrics.innerHTML = '';
   for (const [mode, metrics] of Object.entries(summary.overall)) {
@@ -489,6 +492,96 @@ function displayResults(data) {
 
   // Individual Problem Results
   displayProblemResults(data.results);
+}
+
+function countPassTransitions(results, beforeMode, afterMode) {
+  const counts = { improved: 0, regressed: 0, unchanged: 0, comparable: 0 };
+  for (const result of results || []) {
+    const before = result?.modes?.[beforeMode]?.passed;
+    const after = result?.modes?.[afterMode]?.passed;
+    if (typeof before !== 'boolean' || typeof after !== 'boolean') continue;
+    counts.comparable += 1;
+    if (!before && after) counts.improved += 1;
+    else if (before && !after) counts.regressed += 1;
+    else counts.unchanged += 1;
+  }
+  return counts;
+}
+
+function inferRunModels(data) {
+  let primary = data?.settings?.model || null;
+  let textgrad = data?.settings?.textGradModel || null;
+  const feedbackCalls = new Set([
+    'critique_evaluation', 'critique_backward', 'prompt_optimization',
+  ]);
+  const primaryCalls = new Set([
+    'initial_generation', 'regenerated_solution', 'final_generation',
+  ]);
+
+  for (const result of data?.results || []) {
+    for (const mode of Object.values(result?.modes || {})) {
+      for (const record of mode?.generation_records || []) {
+        if (!primary && primaryCalls.has(record.call_type) && record.model) {
+          primary = record.model;
+        }
+        if (!textgrad && feedbackCalls.has(record.call_type) && record.model) {
+          textgrad = record.model;
+        }
+      }
+    }
+    if (primary && textgrad) break;
+  }
+  return { primary, textgrad };
+}
+
+function escapeResultText(value) {
+  return String(value).replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
+  })[character]);
+}
+
+function transitionCard(label, counts) {
+  const comparison = counts.comparable
+    ? `${counts.comparable} comparable problems; ${counts.unchanged} unchanged`
+    : 'Transition data unavailable';
+  return `
+    <div class="token-accounting-card">
+      <span>${escapeResultText(label)}</span>
+      <strong>
+        <span class="transition-improved">${counts.improved} improved</span>
+        <span aria-hidden="true"> · </span>
+        <span class="transition-regressed">${counts.regressed} regressed</span>
+      </strong>
+      <small>${comparison}</small>
+    </div>`;
+}
+
+function displayRunSummary(data) {
+  if (!benchmarkRunSummary) return;
+  const models = inferRunModels(data);
+  const noRag = countPassTransitions(data?.results, 'baseline', 'textgrad_only');
+  const withRag = countPassTransitions(data?.results, 'rag_only', 'full');
+  const totalImproved = noRag.improved + withRag.improved;
+  const totalRegressed = noRag.regressed + withRag.regressed;
+
+  benchmarkRunSummary.innerHTML = `
+    <div class="token-accounting-grid run-summary-grid">
+      <div class="token-accounting-card">
+        <span>Primary generation model</span>
+        <strong>${escapeResultText(models.primary || 'Unavailable in this result file')}</strong>
+      </div>
+      <div class="token-accounting-card">
+        <span>TextGrad feedback model</span>
+        <strong>${escapeResultText(models.textgrad || 'Unavailable in this result file')}</strong>
+      </div>
+      ${transitionCard('No RAG: Baseline → TextGrad', noRag)}
+      ${transitionCard('With RAG: RAG-only → Full', withRag)}
+    </div>
+    <p class="workflow-note">
+      Across both paired branches: <strong class="transition-improved">${totalImproved} improved</strong>
+      and <strong class="transition-regressed">${totalRegressed} regressed</strong> Pass@1 outcomes.
+      Improvement means fail → pass; regression means pass → fail.
+    </p>`;
 }
 
 function displayPairedWorkflow(summary, results) {

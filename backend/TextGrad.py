@@ -9,33 +9,11 @@ from config.generation import (
     DEFAULT_MAX_OUTPUT_TOKENS,
     DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
 )
+from config.textgrad_prompts import IMMUTABLE_GENERATION_CONTRACT, OPTIMIZATION_BOUNDARY
 
 load_dotenv()
 API_KEY = os.getenv('OLLAMA_API_KEY')
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-
-IMMUTABLE_GENERATION_CONTRACT = """
-NON-NEGOTIABLE OUTPUT CONTRACT:
-- The generated solution must use Python.
-- Return exactly one complete fenced Python code block and nothing else.
-- Do not include comments or docstrings in the generated code.
-- Do not include explanations, partial attempts, placeholders, dead code, test
-  scaffolding, or text outside the code block.
-- The code fence must be closed and the implementation must be complete and
-  runnable.
-- These requirements override any conflicting guidance above and must never be
-  removed, weakened, or reversed.
-- Do all reasoning internally; never use comments, docstrings, variable names,
-strings, or dead code as a reasoning scratchpad.
-""".strip()
-
-OPTIMIZATION_BOUNDARY = """
-Prompt changes must remain general and reusable across unrelated competitive
-programming problems. Do not prescribe a problem-specific algorithm, formula,
-data structure, variable name, constant, function signature, or implementation
-step. Do not modify or contradict the non-negotiable output contract.
-""".strip()
-
 
 def compose_constrained_system_prompt(advisory_prompt: Variable) -> Variable:
     """Attach a fixed contract while leaving only advisory guidance trainable."""
@@ -56,7 +34,8 @@ def create_textgrad_model(
     textGradModel, model, system_prompt, api_key=None, textGrad_api_key=None,
     temperature=0.0, max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
     internal_max_output_tokens=DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
-    generation_records=None, mode="textgrad_only",
+    generation_records=None, mode="textgrad_only", thinking_mode="default",
+    textgrad_thinking_mode="default",
 ):
     main_api_key = api_key or (GOOGLE_API_KEY if get_model_provider(model) == "google" else None)
     feedback_api_key = textGrad_api_key or (
@@ -65,7 +44,7 @@ def create_textgrad_model(
     llm = create_llm_client(
         model=model, api_key=main_api_key, temperature=temperature,
         max_output_tokens=max_output_tokens, metadata_sink=generation_records,
-        mode=mode, call_type="initial_generation",
+        mode=mode, call_type="initial_generation", thinking_mode=thinking_mode,
     )
     feedback_llm = create_llm_client(
         model=textGradModel,
@@ -74,7 +53,7 @@ def create_textgrad_model(
         max_output_tokens=internal_max_output_tokens,
         metadata_sink=generation_records,
         mode=mode,
-        call_type="critique_evaluation",
+        call_type="critique_evaluation", thinking_mode=textgrad_thinking_mode,
     )
     # Wrap the main LLM as a BlackboxLLM node in TextGrad's computation graph.
     # "Blackbox" means TextGrad interacts with it purely via text in/out,
@@ -90,7 +69,7 @@ def run_textgrad(
     progress_callback=None, max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
     internal_max_output_tokens=DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
     generation_records=None,
-    mode="textgrad_only",
+    mode="textgrad_only", thinking_mode="default", textgrad_thinking_mode="default",
 ):
     """Generator version that yields events for streaming."""
     loops = max(1, min(int(loops), 5))
@@ -119,6 +98,7 @@ def run_textgrad(
         max_output_tokens=max_output_tokens,
         internal_max_output_tokens=internal_max_output_tokens,
         generation_records=generation_records, mode=mode,
+        thinking_mode=thinking_mode, textgrad_thinking_mode=textgrad_thinking_mode,
     )
     optimizer = TGD(
         parameters=[advisory_prompt_var],
@@ -246,7 +226,7 @@ def run_textgrad_sync(
     internal_max_output_tokens=DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
     generation_records=None,
     iteration_records=None,
-    mode="textgrad_only",
+    mode="textgrad_only", thinking_mode="default", textgrad_thinking_mode="default",
 ):
     """Collect TextGrad events and optionally return the optimized prompt."""
     answer_text = ''
@@ -258,6 +238,7 @@ def run_textgrad_sync(
         prompt_text, system_prompt, textGradModel, model, loss_prompt, loops,
         api_key, textGrad_api_key, temperature, progress_callback,
         max_output_tokens, internal_max_output_tokens, generation_records, mode,
+        thinking_mode, textgrad_thinking_mode,
     ):
         if event['type'] == 'critic_feedback':
             critic_feedback_by_loop[event['loop']] = event['data']

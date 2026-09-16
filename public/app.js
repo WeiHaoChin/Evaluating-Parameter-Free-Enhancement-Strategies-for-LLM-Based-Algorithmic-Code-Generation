@@ -11,6 +11,20 @@ const LEGACY_WELCOME_MESSAGES = [
   'Welcome! This competitive-programming evaluation platform is styled like ChatGPT. Open the settings page to customize model or evaluation settings.',
   'Welcome! This competitive-programming evaluation platform is styled like ChatGPT. Open the settings page to customize model, benchmark, or evaluation settings.',
 ];
+const ACTIVE_CONVERSATION_KEY = 'fyp_active_conversation_id';
+
+function loadActiveConversationId() {
+  const value = sessionStorage.getItem(ACTIVE_CONVERSATION_KEY);
+  return value && /^\d+$/.test(value) ? Number(value) : null;
+}
+
+function setActiveConversationId(id) {
+  if (id === null || id === undefined) {
+    sessionStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+    return;
+  }
+  sessionStorage.setItem(ACTIVE_CONVERSATION_KEY, String(id));
+}
 
 // WebSocket connection state
 let ws = null;
@@ -92,24 +106,34 @@ function saveConversation(messages, settings) {
   const firstUserMessage = filteredMessages.find(m => m.role === 'user');
   const title = firstUserMessage?.text?.substring(0, 50) || 'Untitled Conversation';
   
+  const existingIndex = activeConversationId === null
+    ? -1
+    : conversations.findIndex(conversation => conversation.id === activeConversationId);
+  const existingConversation = existingIndex >= 0 ? conversations[existingIndex] : null;
   const conversation = {
-    id: Date.now(),
+    ...existingConversation,
+    id: existingConversation?.id ?? Date.now(),
     timestamp: new Date().toISOString(),
     title: title,
     messages: filteredMessages,
     settings: settings
   };
+  if (existingIndex >= 0) conversations.splice(existingIndex, 1);
   conversations.unshift(conversation);
   saveSavedConversations(conversations);
+  activeConversationId = conversation.id;
+  setActiveConversationId(conversation.id);
   return conversation;
 }
+
+let activeConversationId = loadActiveConversationId();
 
 const state = {
   messages: (() => {
     const loaded = loadCurrentChat();
     // Only use loaded chat if it was explicitly loaded from Examples
     const wasLoadedFromExamples = sessionStorage.getItem('fyp_loaded_from_examples') === 'true';
-    if (loaded.length > 0 && wasLoadedFromExamples) {
+    if (loaded.length > 0 && (wasLoadedFromExamples || activeConversationId !== null)) {
       sessionStorage.removeItem('fyp_loaded_from_examples');
       return loaded;
     }
@@ -644,6 +668,8 @@ if (newChatBtn) {
   newChatBtn.addEventListener('click', () => {
     // Clear current chat and start new one
     sessionStorage.removeItem('fyp_loaded_from_examples'); // Clear the load flag
+    activeConversationId = null;
+    setActiveConversationId(null);
     localStorage.removeItem('fyp_current_chat'); // Clear current chat
     state.messages = [
       {

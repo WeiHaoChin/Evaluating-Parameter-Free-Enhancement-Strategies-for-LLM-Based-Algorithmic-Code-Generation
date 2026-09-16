@@ -249,4 +249,7 @@ async def get_default_settings() -> dict:
     Get default settings from schemas.Settings
     """
     ollama = await asyncio.to_thread(get_ollama_status)
-    return {**settings_defaults(ollama["models"]), "ollama": ollama}
+    return {
+        **settings_defaults(ollama["models"], ollama.get("modelThinking")),
+        "ollama": ollama,
+    }

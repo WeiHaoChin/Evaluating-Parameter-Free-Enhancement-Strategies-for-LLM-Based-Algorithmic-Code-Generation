@@ -1,11 +1,15 @@
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from config.models import (
     MODEL_CONFIG,
     get_model_provider,
     model_requires_api_key,
     register_local_ollama_models,
+    THINKING_MODES,
+    canonical_ollama_model_name,
+    unavailable_thinking_config,
 )
+from config.textgrad_prompts import IMMUTABLE_GENERATION_CONTRACT, OPTIMIZATION_BOUNDARY
 from config.generation import (
     DEFAULT_MAX_OUTPUT_TOKENS,
     DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
@@ -19,12 +23,14 @@ SUPPORTED_MODELS = tuple(MODEL_CONFIG)
 
 class Settings(BaseModel):
     model: str                  = Field(default="gemini-2.5-pro")
+    thinkingMode: str           = Field(default="default")
     systemPrompt: str           = Field(default="""You are an expert competitive programmer. Given a competitive programming problem, produce a correct and efficient solution that fits within the given time and memory constraints.""")
     temperature: float          = Field(default=0.0, ge=0.0, le=1.0)
     maxOutputTokens: int        = Field(default=DEFAULT_MAX_OUTPUT_TOKENS, ge=1)
     includeRag: bool            = Field(default=True)
     includeTextGrad: bool       = Field(default=True)
     textGradModel: str          = Field(default="gemini-2.5-pro")
+    textGradThinkingMode: str   = Field(default="default")
     textGradLoops: int          = Field(default=1, ge=1, le=5)
     textGradInternalMaxOutputTokens: int = Field(
         default=DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS, ge=1
@@ -77,12 +83,45 @@ Constraints for your critique:
         get_model_provider(value)
         return value
 
+    @model_validator(mode="after")
+    def valid_thinking_modes(self):
+        for mode, label in (
+            (self.thinkingMode, "thinkingMode"),
+            (self.textGradThinkingMode, "textGradThinkingMode"),
+        ):
+            if mode not in THINKING_MODES:
+                raise ValueError(f"{label} '{mode}' is not a recognized Ollama thinking value.")
+        return self
 
-def settings_defaults(local_models: list[str] | None = None) -> dict:
+
+def settings_defaults(
+    local_models: list[str] | None = None,
+    discovered_thinking: dict[str, dict] | None = None,
+) -> dict:
     """Settings defaults plus the supported choices for settings clients."""
     detected_local_models = local_models or []
     register_local_ollama_models(detected_local_models)
+    discovered = discovered_thinking or {}
     models = list(dict.fromkeys([*detected_local_models, *SUPPORTED_MODELS]))
+    known_canonical_names = {
+        canonical_ollama_model_name(model) for model in models
+    }
+    for discovered_model in discovered:
+        is_cloud_model = discovered_model.endswith(":cloud") or discovered_model.endswith("-cloud")
+        canonical_name = canonical_ollama_model_name(discovered_model)
+        if is_cloud_model and canonical_name not in known_canonical_names:
+            models.append(discovered_model)
+            known_canonical_names.add(canonical_name)
+    discovered_by_canonical = {
+        canonical_ollama_model_name(model): config
+        for model, config in discovered.items()
+    }
+    model_thinking = {
+        model: discovered.get(model)
+        or discovered_by_canonical.get(canonical_ollama_model_name(model))
+        or unavailable_thinking_config()
+        for model in models
+    }
     defaults = Settings().model_dump()
     if detected_local_models:
         # Prefer an actually installed local model without hard-coding its name.
@@ -92,6 +131,9 @@ def settings_defaults(local_models: list[str] | None = None) -> dict:
         **defaults,
         "models": models,
         "modelProviders": {model: get_model_provider(model) for model in models},
+        "modelThinking": model_thinking,
+        "immutableGenerationContract": IMMUTABLE_GENERATION_CONTRACT,
+        "optimizationBoundary": OPTIMIZATION_BOUNDARY,
     }
 
 

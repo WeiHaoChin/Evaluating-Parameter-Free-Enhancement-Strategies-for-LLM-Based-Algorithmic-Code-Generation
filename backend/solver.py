@@ -90,12 +90,13 @@ def call_llm(
     generation_records: Optional[list[dict]] = None,
     mode: Optional[str] = None,
     call_type: str = "final_generation",
+    thinking_mode: str = "default",
 ) -> str:
     """Call LLM directly without TextGrad."""
     llm = create_llm_client(
         model=model, api_key=api_key, temperature=temperature,
         max_output_tokens=max_output_tokens, metadata_sink=generation_records,
-        mode=mode, call_type=call_type,
+        mode=mode, call_type=call_type, thinking_mode=thinking_mode,
     )
     return llm(message, system_prompt=system_prompt)
 
@@ -316,6 +317,8 @@ def run_pipeline(
     max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
     textgrad_internal_max_output_tokens: int = DEFAULT_TEXTGRAD_INTERNAL_MAX_OUTPUT_TOKENS,
     mode: Optional[str] = None,
+    thinking_mode: str = "default",
+    textgrad_thinking_mode: str = "default",
 ) -> dict:
     """
     Full CP solver pipeline.
@@ -406,6 +409,8 @@ def run_pipeline(
                 generation_records=generation_records,
                 iteration_records=textgrad_iterations,
                 mode=experiment_mode,
+                thinking_mode=thinking_mode,
+                textgrad_thinking_mode=textgrad_thinking_mode,
             )
         except Exception as e:
             logger.error(f"TextGrad failed: {e}", exc_info=True)
@@ -425,6 +430,7 @@ def run_pipeline(
                 generation_records=generation_records,
                 mode=experiment_mode,
                 call_type="final_generation",
+                thinking_mode=thinking_mode,
             )
         except Exception as e:
             logger.error(f"LLM call failed: {e}", exc_info=True)

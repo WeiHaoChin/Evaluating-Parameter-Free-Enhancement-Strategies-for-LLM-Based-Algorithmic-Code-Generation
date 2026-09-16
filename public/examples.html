@@ -253,6 +253,7 @@
         if (conversation) {
           localStorage.setItem('fyp_current_chat', JSON.stringify(conversation.messages));
           sessionStorage.setItem('fyp_chat_settings', JSON.stringify(conversation.settings));
+          sessionStorage.setItem('fyp_active_conversation_id', String(conversation.id));
           sessionStorage.setItem('fyp_loaded_from_examples', 'true'); // Flag to load the conversation
           window.navigateWithTransition('index.html');
         }
@@ -263,6 +264,9 @@
           const conversations = loadSavedConversations();
           const filtered = conversations.filter(c => c.id !== id);
           saveSavedConversations(filtered);
+          if (sessionStorage.getItem('fyp_active_conversation_id') === String(id)) {
+            sessionStorage.removeItem('fyp_active_conversation_id');
+          }
           renderConversations();
         }
       }

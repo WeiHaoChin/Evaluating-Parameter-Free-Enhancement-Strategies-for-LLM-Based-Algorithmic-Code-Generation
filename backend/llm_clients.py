@@ -6,7 +6,12 @@ import time
 import httpx
 from ollama import Client
 from google import genai
-from config.models import get_model_provider, register_local_ollama_models
+from config.models import (
+    THINKING_MODES,
+    get_model_provider,
+    register_local_ollama_models,
+    unavailable_thinking_config,
+)
 from config.generation import DEFAULT_MAX_OUTPUT_TOKENS
 from request_audit import capture_ollama_request
 
@@ -14,6 +19,80 @@ logger = logging.getLogger(__name__)
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 OLLAMA_CLOUD_HOST = os.getenv("OLLAMA_CLOUD_HOST", "https://ollama.com").rstrip("/")
 MAX_OUTPUT_TOKENS = DEFAULT_MAX_OUTPUT_TOKENS
+
+
+def _thinking_mode(value):
+    if value is True:
+        return "on"
+    if value is False:
+        return "off"
+    normalized = str(value).lower()
+    return normalized if normalized in THINKING_MODES - {"default"} else None
+
+
+def _thinking_config_from_recommendation(thinking) -> dict | None:
+    """Translate Ollama's advertised native values into settings values."""
+    if not isinstance(thinking, dict):
+        return None
+    modes = []
+    for value in thinking.get("values", []):
+        mode = _thinking_mode(value)
+        if mode and mode not in modes:
+            modes.append(mode)
+    if not modes:
+        return None
+    provider_default = _thinking_mode(thinking.get("default"))
+    default_description = (
+        f" Ollama currently reports {provider_default} as the model default."
+        if provider_default else ""
+    )
+    return {
+        "configurable": True,
+        "default": "default",
+        "providerDefault": provider_default,
+        "modes": ["default", *modes],
+        "note": "Choices reported by Ollama for this model." + default_description,
+        "source": "ollama_recommendations",
+    }
+
+
+def _discover_thinking_configs(client: Client | None, models: list[str]) -> dict[str, dict]:
+    """Discover exact thinking controls, falling back to capability-only data."""
+    discovered: dict[str, dict] = {}
+    recommendation_hosts = dict.fromkeys((OLLAMA_HOST, OLLAMA_CLOUD_HOST))
+    for host in recommendation_hosts:
+        try:
+            response = httpx.get(
+                f"{host}/api/experimental/model-recommendations", timeout=3.0
+            )
+            if response.status_code == 200:
+                for recommendation in response.json().get("recommendations", []):
+                    model = recommendation.get("model")
+                    config = _thinking_config_from_recommendation(
+                        recommendation.get("thinking")
+                    )
+                    if model and config:
+                        discovered[str(model)] = config
+        except Exception as exc:
+            logger.debug("Ollama thinking recommendations unavailable from %s: %s", host, exc)
+
+    for model in models if client is not None else []:
+        if model in discovered:
+            continue
+        try:
+            shown = client.show(model)
+            capabilities = getattr(shown, "capabilities", None) or []
+            capability_names = {
+                str(getattr(capability, "value", capability)).lower()
+                for capability in capabilities
+            }
+            if "thinking" in capability_names:
+                discovered[model] = unavailable_thinking_config(
+                    "Ollama reports thinking support but did not publish the exact accepted values."
+                ) | {"source": "ollama_show"}
+        except Exception as exc:
+            logger.debug("Unable to inspect Ollama model %s: %s", model, exc)
+    return discovered
 
 
 def _value(source, name, default=None):
@@ -97,7 +176,8 @@ class GenerationTrackedLLM:
 def get_ollama_status() -> dict:
     """Return local Ollama availability and the models installed on this machine."""
     try:
-        response = Client(host=OLLAMA_HOST).list()
+        client = Client(host=OLLAMA_HOST)
+        response = client.list()
         entries = getattr(response, "models", None)
         if entries is None and isinstance(response, dict):
             entries = response.get("models", [])
@@ -110,18 +190,28 @@ def get_ollama_status() -> dict:
                 models.append(str(name))
         models = sorted(set(models))
         register_local_ollama_models(models)
-        return {"running": True, "host": OLLAMA_HOST, "models": models, "error": None}
+        model_thinking = _discover_thinking_configs(client, models)
+        return {
+            "running": True, "host": OLLAMA_HOST, "models": models,
+            "modelThinking": model_thinking,
+            "error": None,
+        }
     except Exception as exc:
         register_local_ollama_models([])
         logger.info("Local Ollama is unavailable at %s: %s", OLLAMA_HOST, exc)
-        return {"running": False, "host": OLLAMA_HOST, "models": [], "error": str(exc)}
+        return {
+            "running": False, "host": OLLAMA_HOST, "models": [],
+            "modelThinking": _discover_thinking_configs(None, []),
+            "error": str(exc),
+        }
 
 class OllamaLLM(GenerationTrackedLLM):
-    def __init__(self, model, host=None, api_key=None, temperature=0.0, max_output_tokens=MAX_OUTPUT_TOKENS, metadata_sink=None, mode=None, call_type="generation"):
+    def __init__(self, model, host=None, api_key=None, temperature=0.0, max_output_tokens=MAX_OUTPUT_TOKENS, metadata_sink=None, mode=None, call_type="generation", thinking_mode="default"):
         self.model = model
         self.host = (host or OLLAMA_HOST).rstrip('/')
         self.client = Client(host=self.host, event_hooks={"request": [self._audit_request]})
         self.temperature = temperature
+        self.thinking_mode = thinking_mode
         self._init_tracking(max_output_tokens, metadata_sink, mode, call_type)
 
     def _audit_request(self, request):
@@ -142,8 +232,10 @@ class OllamaLLM(GenerationTrackedLLM):
                 'num_predict': self.max_output_tokens,
             },
         }
-        if self.model.startswith(('qwen3.5','deepseek-v4','kimi-k2.6')):
-            chat_kwargs['think'] = False
+        if self.thinking_mode != "default":
+            chat_kwargs['think'] = {"off": False, "on": True}.get(
+                self.thinking_mode, self.thinking_mode
+            )
 
         response = self.client.chat(**chat_kwargs)
         message = getattr(response, 'message', None)
@@ -166,7 +258,7 @@ class OllamaLLM(GenerationTrackedLLM):
 class OllamaCloudLLM(OllamaLLM):
     """Authenticated Ollama Cloud client used for non-local model names."""
 
-    def __init__(self, model, api_key=None, temperature=0.0, max_output_tokens=MAX_OUTPUT_TOKENS, metadata_sink=None, mode=None, call_type="generation", **kwargs):
+    def __init__(self, model, api_key=None, temperature=0.0, max_output_tokens=MAX_OUTPUT_TOKENS, metadata_sink=None, mode=None, call_type="generation", thinking_mode="default", **kwargs):
         if not api_key:
             raise ValueError("An Ollama Cloud API key is required for this model.")
         self.model = model
@@ -177,6 +269,7 @@ class OllamaCloudLLM(OllamaLLM):
             event_hooks={"request": [self._audit_request]},
         )
         self.temperature = temperature
+        self.thinking_mode = thinking_mode
         self._init_tracking(max_output_tokens, metadata_sink, mode, call_type)
 
 class GoogleGenerativeAI(GenerationTrackedLLM):
@@ -321,7 +414,7 @@ class DeepSeekLLM(GenerationTrackedLLM):
         return choice["message"]["content"]
 
 
-def create_llm_client(model, api_key=None, temperature=0.0, max_output_tokens=MAX_OUTPUT_TOKENS, metadata_sink=None, mode=None, call_type="generation"):
+def create_llm_client(model, api_key=None, temperature=0.0, max_output_tokens=MAX_OUTPUT_TOKENS, metadata_sink=None, mode=None, call_type="generation", thinking_mode="default"):
     """Create the correct LLM client from the central model configuration."""
     provider = get_model_provider(model)
     client_types = {
@@ -332,7 +425,7 @@ def create_llm_client(model, api_key=None, temperature=0.0, max_output_tokens=MA
         "deepseek": DeepSeekLLM,
     }
     try:
-        return client_types[provider](
+        client_kwargs = dict(
             model=model,
             api_key=api_key,
             temperature=temperature,
@@ -341,5 +434,8 @@ def create_llm_client(model, api_key=None, temperature=0.0, max_output_tokens=MA
             mode=mode,
             call_type=call_type,
         )
+        if provider in {"ollama_local", "ollama_cloud"}:
+            client_kwargs["thinking_mode"] = thinking_mode
+        return client_types[provider](**client_kwargs)
     except KeyError as exc:
         raise ValueError(f"Unsupported provider '{provider}' configured for model '{model}'.") from exc

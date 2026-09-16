@@ -25,8 +25,9 @@ class FakeOllamaClient:
         self.response = response
         self.last_options = None
 
-    def chat(self, *, model, messages, options):
+    def chat(self, *, model, messages, options, **kwargs):
         self.last_options = options
+        self.last_kwargs = kwargs
         return self.response
 
 
@@ -92,6 +93,7 @@ class GenerationMetadataTests(unittest.TestCase):
         }
         settings = SimpleNamespace(
             systemPrompt="system", model="main", temperature=0.0,
+            thinkingMode="default", textGradThinkingMode="default",
             maxOutputTokens=100, textGradInternalMaxOutputTokens=100,
             textGradModel="critic", textGradLoops=1,
             textGradLossPrompt="loss", apiKey=None, textGradApiKey=None,
@@ -262,6 +264,15 @@ class GenerationMetadataTests(unittest.TestCase):
         self.assertEqual(records[0]["output_tokens"], 17)
         self.assertGreaterEqual(records[0]["client_duration_ns"], 0)
         self.assertFalse(records[0]["truncated"])
+        self.assertNotIn("think", llm.client.last_kwargs)
+
+    def test_ollama_thinking_mode_is_sent_using_native_value(self):
+        llm = OllamaLLM("qwen3.5:cloud", thinking_mode="off")
+        llm.client = FakeOllamaClient({"message": {"content": "solution"}})
+
+        llm("problem")
+
+        self.assertIs(llm.client.last_kwargs["think"], False)
 
     def test_natural_stop_at_limit_is_not_marked_truncated(self):
         records = []

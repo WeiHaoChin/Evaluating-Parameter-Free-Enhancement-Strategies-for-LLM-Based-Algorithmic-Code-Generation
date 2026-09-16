@@ -2,12 +2,14 @@
   const STORAGE_KEY = 'fyp_chat_settings';
   const SETTING_KEYS = [
     'model',
+    'thinkingMode',
     'systemPrompt',
     'temperature',
     'maxOutputTokens',
     'includeRag',
     'includeTextGrad',
     'textGradModel',
+    'textGradThinkingMode',
     'textGradLoops',
     'textGradInternalMaxOutputTokens',
     'textGradLossPrompt',
@@ -38,6 +40,14 @@
     // Older exports may contain null for optional Pydantic API-key fields.
     merged.apiKey = merged.apiKey ?? '';
     merged.textGradApiKey = merged.textGradApiKey ?? '';
+    merged.thinkingMode = merged.thinkingMode ?? 'default';
+    merged.textGradThinkingMode = merged.textGradThinkingMode ?? 'default';
+    const thinkingModes = ['default', 'off', 'on', 'low', 'medium', 'high', 'max'];
+    for (const key of ['thinkingMode', 'textGradThinkingMode']) {
+      if (!thinkingModes.includes(merged[key])) {
+        throw new Error(`${key} is not a recognized thinking mode.`);
+      }
+    }
 
     for (const key of ['model', 'textGradModel']) {
       if (typeof merged[key] !== 'string' || !merged[key].trim()) {
@@ -64,7 +74,7 @@
     for (const key of ['includeRag', 'includeTextGrad']) {
       if (typeof merged[key] !== 'boolean') throw new Error(`${key} must be true or false.`);
     }
-    for (const key of ['systemPrompt', 'textGradLossPrompt', 'apiKey', 'textGradApiKey']) {
+    for (const key of ['systemPrompt', 'textGradLossPrompt', 'apiKey', 'textGradApiKey', 'thinkingMode', 'textGradThinkingMode']) {
       if (typeof merged[key] !== 'string') throw new Error(`${key} must be text.`);
     }
 

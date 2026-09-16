@@ -11,6 +11,28 @@ MODEL_CONFIG = {
     "kimi-k2.6:cloud": {"provider": "ollama_cloud"},
 }
 
+THINKING_MODES = frozenset({"default", "off", "on", "low", "medium", "high", "max"})
+
+
+def unavailable_thinking_config(note: str | None = None) -> dict:
+    """Return a conservative control when Ollama supplies no exact metadata."""
+    return {
+        "configurable": False,
+        "default": "default",
+        "modes": ["default"],
+        "note": note or "Ollama did not report configurable thinking modes for this model.",
+    }
+
+
+def canonical_ollama_model_name(model: str) -> str:
+    """Match local and cloud aliases without encoding model-family knowledge."""
+    normalized = (model or "").strip().lower()
+    if normalized.endswith(":cloud"):
+        return normalized[:-6]
+    if normalized.endswith("-cloud"):
+        return normalized[:-6]
+    return normalized
+
 _LOCAL_OLLAMA_MODELS: set[str] = set()
 
 

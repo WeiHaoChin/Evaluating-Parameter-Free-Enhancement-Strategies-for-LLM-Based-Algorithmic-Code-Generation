@@ -144,6 +144,8 @@ async def chat(request: ChatRequest):
                 internal_max_output_tokens=settings.textGradInternalMaxOutputTokens,
                 generation_records=generation_records,
                 mode="chat_textgrad",
+                thinking_mode=settings.thinkingMode,
+                textgrad_thinking_mode=settings.textGradThinkingMode,
             )
             reply = f"TextGrad result after {settings.textGradLoops} loops:\n{result}"
         except Exception as e:
@@ -159,6 +161,7 @@ async def chat(request: ChatRequest):
                 max_output_tokens=settings.maxOutputTokens,
                 generation_records=generation_records,
                 mode="chat",
+                thinking_mode=settings.thinkingMode,
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"LLM call failed: {e}")
@@ -286,7 +289,10 @@ async def rag_build_status():
 async def get_default_settings():
     """Get default settings from schemas.Settings"""
     ollama = await asyncio.to_thread(get_ollama_status)
-    return {**settings_defaults(ollama["models"]), "ollama": ollama}
+    return {
+        **settings_defaults(ollama["models"], ollama.get("modelThinking")),
+        "ollama": ollama,
+    }
 
 # ── WebSocket endpoint ─────────────────────────────────────────────────────────
 @app.websocket("/ws/chat")
@@ -348,6 +354,8 @@ async def websocket_chat(websocket: WebSocket):
                         internal_max_output_tokens=settings.textGradInternalMaxOutputTokens,
                         generation_records=generation_records,
                         mode="chat_textgrad",
+                        thinking_mode=settings.thinkingMode,
+                        textgrad_thinking_mode=settings.textGradThinkingMode,
                     ):
                         await websocket.send_text(json.dumps(event))
 
@@ -362,6 +370,7 @@ async def websocket_chat(websocket: WebSocket):
                         max_output_tokens=settings.maxOutputTokens,
                         generation_records=generation_records,
                         mode="chat",
+                        thinking_mode=settings.thinkingMode,
                     )
                     await websocket.send_text(
                         json.dumps({"type": "complete", "answer": reply, "generation_records": generation_records})
