@@ -18,6 +18,7 @@ DATA_ROOT = Path(__file__).parent / "data"
 CHROMA_DB_PATH = DATA_ROOT / "rag_chunks" / "chroma_db"
 COLLECTION_NAME = "cp_rag"  # Default collection name, matches RAG pipeline
 DEFAULT_MIN_SIMILARITY = float(os.getenv("RAG_MIN_SIMILARITY", "0.75"))
+SOLUTION_KNOWLEDGE_MIN_SIMILARITY = 0.72
 
 
 def initialize_rag(
@@ -243,7 +244,7 @@ def query_solution_rag(
         query_text,
         n_results=4,
         filters={"chunk_type": {"$in": ["editorial", "theory"]}},
-        min_similarity=.72,
+        min_similarity=SOLUTION_KNOWLEDGE_MIN_SIMILARITY,
     )
     problem_results = query_rag(
         query_text,

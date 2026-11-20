@@ -37,6 +37,10 @@ class SolutionRagContextTests(unittest.TestCase):
         )
         self.assertEqual(
             query.call_args_list[0].kwargs["min_similarity"],
+            rag_handler.SOLUTION_KNOWLEDGE_MIN_SIMILARITY,
+        )
+        self.assertEqual(
+            query.call_args_list[1].kwargs["min_similarity"],
             rag_handler.DEFAULT_MIN_SIMILARITY,
         )
 

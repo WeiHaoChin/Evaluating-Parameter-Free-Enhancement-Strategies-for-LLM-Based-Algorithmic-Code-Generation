@@ -76,7 +76,8 @@ def run_textgrad(
     if loops < 1:
         loops = 1
 
-    prompt = Variable(prompt_text, requires_grad=False, role_description='The user input/question provided to the model. This is fixed and should not be modified.')
+    prompt = Variable(prompt_text, requires_grad=False,
+                       role_description='The user input/question provided to the model. This is fixed and should not be modified.')
     advisory_prompt_var = Variable(
         system_prompt,
         requires_grad=True,

@@ -1,126 +1,106 @@
 # Competitive Programming LLM Evaluation Platform
 
-This work-in-progress project evaluates language models on competitive-programming tasks. It combines an interactive browser UI, retrieval-augmented generation (RAG), optional TextGrad prompt refinement, and LiveCodeBench-based benchmarking.
+> **Project status: Completed**
 
-## Current status
+This final-year project investigates whether retrieval-augmented generation (RAG) and TextGrad-based prompt optimisation improve Python solutions to hard competitive-programming problems. It provides a browser-based chat and benchmark platform backed by FastAPI, ChromaDB, configurable local or remote language models, and a LiveCodeBench evaluation pipeline.
 
-Implemented workflows include:
+The completed evaluation tested six LLMs on 100 hard problems under four configurations:
+
+- **Baseline** - direct solution generation.
+- **RAG-only** - generation with retrieved competitive-programming context.
+- **TextGrad-only** - critic-guided prompt refinement and regeneration.
+- **Combined** - RAG followed by TextGrad refinement.
+
+The principal findings and the final evaluation figures are summarised below. All report graphs are stored together in [`report/figures/`](report/figures/).
+
+## Final results
+
+| Configuration | Mean Pass@1 | Mean macro testcase-group accuracy | Mean tokens per problem | Relative token use |
+|---|---:|---:|---:|---:|
+| Baseline | 34.67% | 55.16% | 2,844 | 1.00x |
+| RAG-only | **35.33%** | **55.82%** | 6,140 | 2.16x |
+| TextGrad-only | 31.33% | 53.40% | 20,354 | 7.16x |
+| Combined | 34.17% | 54.33% | 37,295 | 13.11x |
+
+RAG produced a small average improvement but was not consistently beneficial across models: it fixed 57 Baseline failures while regressing 53 Baseline successes. TextGrad did not improve mean correctness in the tested configuration, and combining both methods did not produce additive gains. The results favour a conditional pipeline that validates retrieved context and preserves the original candidate unless an enhanced candidate demonstrates an improvement.
+
+![Pass@1 by model and pipeline mode](report/figures/benchmark_results.png)
+
+*Pass@1 across the six evaluated models and four pipeline configurations.*
+
+![Mean correctness across configurations](report/figures/benchmark_mean_correctness_comparison.png)
+
+*Mean Pass@1 and macro testcase-group accuracy across all six models.*
+
+The additional inference stages had a substantial cost: Combined used 13.11 times the Baseline tokens without exceeding Baseline correctness.
+
+![Recorded API token usage](report/figures/benchmark_token_usage.png)
+
+*Mean recorded input and output tokens per problem.*
+
+## Completed functionality
 
 - Streaming chat through FastAPI WebSockets.
 - Local Ollama models and configured remote model providers.
-- RAG retrieval from a persistent local ChromaDB collection.
-- A UI-triggered, end-to-end RAG build: scrape, save, clean, chunk, embed, index, and reload.
-- Optional TextGrad refinement for chat and benchmark generations.
-- LiveCodeBench dataset download, readiness checks, background execution, progress reporting, cancellation, and saved results.
-- Docker Compose services for the Nginx frontend and FastAPI backend.
-
-The RAG build is designed to work in a fresh container with no existing `backend/data`. Scraped source records and generated artifacts are created there during the build.
+- Persistent ChromaDB retrieval with source metadata and RAG context display.
+- End-to-end RAG construction: scrape, normalise, chunk, embed, index, and reload.
+- Optional TextGrad refinement for interactive and benchmark generations.
+- LiveCodeBench download, readiness validation, background execution, cancellation, progress reporting, and result persistence.
+- Baseline, RAG-only, TextGrad-only, and Combined benchmark comparisons.
+- Pass@1, testcase-group accuracy, transition, token, latency, truncation, and compliance analysis.
+- Docker Compose deployment for the Nginx frontend and FastAPI backend.
 
 ## Architecture
 
 ```text
 Browser UI (Nginx or FastAPI static files)
     -> FastAPI HTTP/WebSocket endpoints
-        -> RAG retrieval from local ChromaDB
-        -> model generation
-        -> optional TextGrad refinement
-        -> benchmark evaluation and saved results
+        -> solver pipeline
+            -> optional ChromaDB retrieval
+            -> initial model generation
+            -> optional TextGrad critic and refinement
+            -> LiveCodeBench evaluation and saved results
 ```
 
-Chat requests follow this path:
-
-```text
-Browser -> /ws/chat -> optional Chroma retrieval -> model generation
-                    -> optional TextGrad refinement -> streamed UI result
-```
+The RAG knowledge base is built from Codeforces, USACO, AtCoder, CP-Algorithms, and the *Competitive Programmer's Handbook*. Source records are normalised and chunked before being embedded with `BAAI/bge-small-en-v1.5` and stored in the local `cp_rag` ChromaDB collection.
 
 ## Project structure
 
 ```text
 FYP/
-├── Dockerfile                    Python backend image
-├── docker-compose.yaml           Frontend/backend development stack
-├── requirements.txt              Python dependencies
-├── clearDocker.bat               Local Docker cleanup helper
-├── README.md
-├── public/
-│   ├── Dockerfile                Nginx frontend image
-│   ├── nginx.conf                Static-site configuration
-│   ├── index.html                Chat page
-│   ├── app.js                    Chat state and WebSocket client
-│   ├── settings.html             Model, RAG, and dataset settings page
-│   ├── settings.js               Settings UI and RAG-build trigger
-│   ├── settings-store.js         Browser settings persistence/validation
-│   ├── benchmark.html            Benchmark dashboard
-│   ├── benchmark.js              Benchmark controls and result rendering
-│   ├── examples.html             Saved-conversation browser
-│   ├── new-chat.html             New-chat entry page
-│   ├── page-transitions.js       Shared navigation behavior
-│   └── styles.css                Shared UI styling
-└── backend/
-    ├── main.py                   FastAPI application and background RAG build
-    ├── schemas.py                API request and settings models
-    ├── solver.py                 Generation, prompting, and evaluation flow
-    ├── TextGrad.py               TextGrad optimization integration
-    ├── llm_clients.py            Local and remote model clients
-    ├── rag_handler.py            Chroma loading, querying, and formatting
-    ├── config/
-    │   ├── models.py             Model/provider registry
-    │   └── generation.py         Shared generation limits
-    ├── routes/
-    │   └── benchmark.py          Benchmark HTTP endpoints
-    ├── RAG/
-    │   ├── main.py               Full scrape-to-index orchestrator
-    │   ├── pipeline/
-    │   │   └── rag_pipeline.py   Load, clean, chunk, embed, and ingest logic
-    │   └── scrapers/
-    │       ├── atcoder.py
-    │       ├── codeforces.py
-    │       ├── cp_algorithms.py
-    │       ├── cph_book.py
-    │       └── usaco.py
-    ├── benchmark/
-    │   ├── fetch_lcb.py          Local LiveCodeBench loading
-    │   ├── prefetch_lcb.py       Dataset download/cache handling
-    │   ├── runner.py             Background benchmark orchestration
-    │   ├── metrics.py            Aggregate metrics
-    │   └── logger.py             Checkpoint and result persistence
-    ├── lcb_runner/
-    │   ├── benchmarks/           LiveCodeBench problem schemas/loaders
-    │   ├── evaluation/           Correctness and scoring utilities
-    │   └── utils/                Execution and extraction helpers
-    ├── tests/                    Backend and RAG regression tests
-    └── data/                     Runtime-generated and downloaded data
-        ├── atcoder/              Scraped AtCoder records
-        ├── codeforces/           Scraped Codeforces records
-        ├── cp_algorithms/        Scraped CP-Algorithms articles
-        ├── cph/                  Extracted handbook content
-        ├── usaco/                Scraped USACO records
-        ├── hf_cache/             Hugging Face model/dataset cache
-        └── rag_chunks/
-            ├── chunks.jsonl      Processed retrieval chunks
-            └── chroma_db/        Persistent local vector index
+|-- README.md
+|-- Dockerfile                     Python backend image
+|-- docker-compose.yaml            Frontend/backend stack
+|-- requirements.txt               Python dependencies
+|-- report/
+|   `-- figures/                   Final evaluation graphs
+|-- public/                        Static browser interface
+`-- backend/
+    |-- main.py                    FastAPI application and RAG build orchestration
+    |-- solver.py                  Generation and evaluation workflow
+    |-- TextGrad.py                TextGrad refinement integration
+    |-- llm_clients.py             Local and remote model clients
+    |-- rag_handler.py             ChromaDB loading and retrieval
+    |-- RAG/                       Scrapers and index-building pipeline
+    |-- benchmark/                 Runner, metrics, plot generator, and data loading
+    |-- lcb_runner/                LiveCodeBench evaluation utilities
+    |-- routes/                    Benchmark API routes
+    `-- tests/                     Backend and RAG regression tests
 ```
 
-`backend/data` and `logs` are runtime locations and may be absent in a fresh checkout. The application creates the required data directories as their workflows run.
+`backend/data/` and `logs/` are runtime locations and may be absent from a fresh checkout. They are created when the corresponding workflows run.
 
 ## Prerequisites
 
-For the recommended Docker workflow, install only:
+The recommended setup requires:
 
-- **Docker Desktop** with Linux containers and the WSL 2 backend enabled on Windows.
-- **Git** if you still need to clone the repository.
+- Docker Desktop using Linux containers (WSL 2 backend on Windows).
+- Git, if the repository still needs to be cloned.
+- Either a local [Ollama](https://ollama.com/) installation with at least one pulled model, or credentials for a supported remote model provider.
 
-Docker installs the project's Python runtime and packages while building the backend image. You do not need separate host installations of Python, Node.js, ChromaDB, PyTorch, or the packages in `requirements.txt`.
+Internet access is required for the initial image build, model and dataset downloads, source scraping, and remote model calls. Benchmark evaluation executes model-generated code; use Docker or another appropriately isolated Linux environment.
 
-You must also choose one model-access option:
-
-- **Local models:** install [Ollama](https://ollama.com/) separately on the host and pull at least one model. The backend container connects to it through `host.docker.internal:11434`.
-- **Remote models:** no local model server is required, but you must provide the appropriate provider API key in the Settings page.
-
-Internet access is required during the initial image build. It is also required when downloading embedding models or LiveCodeBench data, running the source scrapers, or calling a remote model. Allow sufficient disk space for the Docker images, PyTorch dependencies, Hugging Face cache, scraped corpus, and generated vector index.
-
-## Quick start with Docker
+## Run with Docker
 
 From the repository root:
 
@@ -128,34 +108,16 @@ From the repository root:
 docker compose up --build
 ```
 
-Open:
+Then open:
 
 - Frontend: <http://localhost:3000>
 - Backend API documentation: <http://localhost:5050/docs>
 
-The backend bind-mounts the repository at `/workspace`, so RAG source data and indexes written to `/workspace/backend/data` persist in the host repository. The Hugging Face cache has an additional mount at `backend/data/hf_cache`. Local Ollama access from the container uses `host.docker.internal:11434`.
-
-## Where the RAG data comes from
-
-The knowledge base is assembled from five public competitive-programming sources:
-
-| Source | Content collected | Saved under |
-|---|---|---|
-| Codeforces | Problem statements, metadata, tags, ratings, and available editorial material | `backend/data/codeforces/` |
-| USACO | Problems and associated solution/editorial content obtained by the USACO scraper | `backend/data/usaco/` |
-| AtCoder | ABC, ARC, and AGC problem metadata, statements, examples, difficulty data, and available editorials | `backend/data/atcoder/` |
-| CP-Algorithms | Algorithm-reference articles and their metadata | `backend/data/cp_algorithms/` |
-| Competitive Programmer's Handbook | Extracted and structured handbook chapters | `backend/data/cph/` |
-
-The source-specific scrapers are in `backend/RAG/scrapers/`. Their saved records are intermediate inputs, not retrieval results. The RAG pipeline subsequently normalizes and chunks those records into `backend/data/rag_chunks/chunks.jsonl`, then embeds them into the local Chroma collection used by chat and benchmarks.
-
-Dataset size is not fixed. It depends on scraper limits, source availability, cached records, and whether a full or selected-source build is run. Upstream content retains its original ownership and licensing; see [Data and licensing](#data-and-licensing).
+The backend bind-mounts the repository at `/workspace`, allowing downloaded datasets, RAG artifacts, and benchmark results to persist on the host. A host Ollama instance is reached through `host.docker.internal:11434`.
 
 ## Build the RAG knowledge base
 
-### From the frontend
-
-Open **Settings** and select **Build RAG knowledge base**. This starts the complete build, not only chunk generation. The frontend calls `POST /api/rag/build`, and the backend runs the equivalent of:
+Use **Settings -> Build RAG knowledge base** in the UI, or run:
 
 ```bash
 python -m backend.RAG.main \
@@ -164,48 +126,49 @@ python -m backend.RAG.main \
   --vector-db chroma
 ```
 
-The pipeline performs these steps:
-
-1. Scrapes Codeforces, USACO, AtCoder, CP-Algorithms, and the Competitive Programmer's Handbook.
-2. Saves source records below `backend/data` in source-specific directories.
-3. Loads and normalizes the saved records.
-4. Cleans and semantically chunks their content.
-5. Writes `backend/data/rag_chunks/chunks.jsonl`.
-6. Embeds chunks with `BAAI/bge-small-en-v1.5`.
-7. Replaces the `cp_rag` collection in `backend/data/rag_chunks/chroma_db`.
-8. Reloads the completed index into the running backend.
-
-The initial build needs internet access for scraping and for the first embedding-model download. It can take a substantial amount of time. Progress and recent subprocess output are exposed by `GET /api/rag/build/status`; only one build can run at once.
-
-Existing scraper output is reused where each scraper supports cached records. Rebuilding replaces the vector collection, preventing duplicate indexed chunks.
-
-### Command-line options
-
-Run the same complete flow as the UI:
+Useful alternatives:
 
 ```bash
-python -m backend.RAG.main --data-root backend/data --embedder local --vector-db chroma
-```
-
-Reprocess already-saved data without scraping:
-
-```bash
+# Reprocess saved source data without scraping
 python -m backend.RAG.main --data-root backend/data --pipeline-only --embedder local --vector-db chroma
-```
 
-Scrape and process selected sources:
-
-```bash
+# Build selected sources only
 python -m backend.RAG.main --data-root backend/data --sources codeforces,cp_algorithms --embedder local --vector-db chroma
 ```
 
 Supported source names are `codeforces`, `usaco`, `atcoder`, `cp_algorithms`, and `cph`.
 
-At startup, `backend/rag_handler.py` attempts to load the local Chroma index. If none exists, the application remains available without RAG retrieval until the build finishes.
+## Run a benchmark
+
+1. Download the selected LiveCodeBench release from **Settings**.
+2. Build the RAG knowledge base if RAG configurations will be evaluated.
+3. Configure the initial and TextGrad models and any required API keys.
+4. Open **Benchmark**, confirm the readiness checks, and start the run.
+5. Monitor progress and inspect the persisted summaries and per-test-case records under `logs/`.
+
+The final report used 100 hard problems from LiveCodeBench `release_v6` with seed 42. Full benchmark execution depends on POSIX process controls and should be run in the Linux Docker container or under WSL, not directly with Windows Python.
+
+## Reproduce the evaluation graphs
+
+The plot generator reads the selected benchmark result files from `backend/benchmark/results/` and writes the final graph set to `report/figures/`:
+
+```bash
+python backend/benchmark/plot_results.py
+```
+
+To use a different result directory or primary output path:
+
+```bash
+python backend/benchmark/plot_results.py \
+  --results-dir path/to/results \
+  --output path/to/figures/benchmark_results.png
+```
+
+Related graphs are written beside the specified `--output` file. The generator produces only the 11 figures retained for the completed evaluation.
 
 ## Local development
 
-Python 3.11 is the container runtime. On Windows PowerShell:
+Python 3.11 is the target runtime. On Windows PowerShell:
 
 ```powershell
 python -m venv .venv
@@ -216,57 +179,7 @@ $env:PYTHONPATH = "$PWD\backend"
 uvicorn backend.main:app --host 127.0.0.1 --port 5050 --reload
 ```
 
-Open <http://127.0.0.1:5050/>. FastAPI serves both the API and the static frontend in this mode.
-
-This host-native setup supports frontend development, chat, model access, and RAG. The LiveCodeBench evaluator itself uses POSIX APIs including `SIGALRM`, `signal.alarm`, and `resource` for execution limits. Consequently, full benchmark execution is not supported directly by Windows Python; run the backend in its Linux Docker container or under WSL. Native Linux can run it without Docker when all dependencies are installed, although isolation is still strongly recommended because benchmark evaluation executes model-generated code.
-
-## Model configuration
-
-Use Settings to select the initial model and optional TextGrad model. Locally detected Ollama models are included in the choices returned by `GET /api/defaults`. Remote models require an API key in the UI.
-
-The underlying integrations also recognize provider environment variables such as:
-
-```dotenv
-GOOGLE_API_KEY=...
-OPENAI_API_KEY=...
-OLLAMA_API_KEY=...
-QDRANT_API_KEY=...
-```
-
-Do not commit `.env`; it is ignored by Git.
-
-## Benchmarking
-
-The benchmark page runs the configured pipeline against a locally cached LiveCodeBench release:
-
-> **Execution environment:** On Windows, run the backend through Docker Compose (or WSL). Host-native Windows is suitable for the UI, chat, and RAG, but not the POSIX-based LiveCodeBench code evaluator. Docker is recommended on every platform because generated solutions are executed during scoring.
-
-1. Download the selected dataset from Settings.
-2. Complete the RAG build and enable RAG.
-3. Select working initial and TextGrad models and provide required API keys.
-4. Review the readiness checks and start the benchmark.
-5. Follow progress and inspect saved summaries and per-test-case records under `logs/`.
-
-The runner reports baseline, RAG-only, TextGrad-only, and full RAG-plus-TextGrad views while reusing the relevant initial generations.
-
-## Main endpoints
-
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/api/status` | Backend health |
-| `GET` | `/api/defaults` | Settings and detected models |
-| `GET` | `/api/ollama/status` | Local Ollama status |
-| `POST` | `/api/chat` | Non-streaming chat |
-| WebSocket | `/ws/chat` | Streaming chat and TextGrad events |
-| `POST` | `/api/rag/build` | Run the full scrape-to-index RAG pipeline |
-| `GET` | `/api/rag/build/status` | RAG build progress and chunk count |
-| `POST` | `/benchmark/dataset/download` | Cache a LiveCodeBench release |
-| `GET` | `/benchmark/dataset/status` | Dataset download state |
-| `POST` | `/benchmark/readiness` | Validate benchmark prerequisites |
-| `POST` | `/benchmark/run` | Start a benchmark |
-| `POST` | `/benchmark/stop` | Request benchmark cancellation |
-| `GET` | `/benchmark/status` | Benchmark progress |
-| `GET` | `/benchmark/results` | Latest saved results |
+Open <http://127.0.0.1:5050/>. Host-native Windows supports UI, chat, model access, and RAG development, but not the POSIX-based LiveCodeBench evaluator.
 
 ## Tests
 
@@ -277,8 +190,30 @@ $env:PYTHONPATH = "$PWD\backend;$PWD"
 python -m pytest backend/tests
 ```
 
-Some tests use local RAG data or evaluation subprocesses and take longer than small unit tests.
+Some tests use local RAG data or evaluation subprocesses and may take longer than unit tests.
+
+## Main endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/status` | Backend health |
+| `GET` | `/api/defaults` | Model and settings defaults |
+| `GET` | `/api/ollama/status` | Local Ollama status |
+| `POST` | `/api/chat` | Non-streaming generation |
+| WebSocket | `/ws/chat` | Streaming chat and TextGrad events |
+| `POST` | `/api/rag/build` | Start the scrape-to-index RAG build |
+| `GET` | `/api/rag/build/status` | RAG build progress |
+| `POST` | `/benchmark/dataset/download` | Cache a LiveCodeBench release |
+| `POST` | `/benchmark/readiness` | Validate benchmark prerequisites |
+| `POST` | `/benchmark/run` | Start a benchmark |
+| `POST` | `/benchmark/stop` | Request cancellation |
+| `GET` | `/benchmark/status` | Benchmark progress |
+| `GET` | `/benchmark/results` | Latest persisted results |
+
+## Scope and limitations
+
+The reported findings are specific to one generation per model/problem/configuration, six selected models, 100 hard problems, and one TextGrad setup. The benchmark sample was platform-imbalanced, and four evaluated problems retrieved content with the same problem identifier, creating a contamination risk. Token counts are a provider-independent computational-cost proxy rather than monetary costs.
 
 ## Data and licensing
 
-This repository is intended for research and educational use. Source content retains its original ownership and licensing. The Competitive Programmer's Handbook material is identified as CC BY-NC-SA 4.0. Verify every upstream source's terms before redistributing a generated corpus or index.
+This repository is intended for research and educational use. Upstream content retains its original ownership and licensing. The *Competitive Programmer's Handbook* material is identified as CC BY-NC-SA 4.0. Verify each source's terms before redistributing a generated corpus or vector index.
